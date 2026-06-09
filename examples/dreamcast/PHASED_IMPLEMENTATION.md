@@ -1,0 +1,177 @@
+# Walnut-CGB Dreamcast Port — Phased Implementation
+
+This document tracks the implementation plan for porting **Walnut-CGB** to the Sega Dreamcast via **KallistiOS (KOS)**. The core library (`walnut_cgb.h`) stays unchanged; all platform work lives in `examples/dreamcast/`.
+
+## Feasibility Summary
+
+| Factor | Assessment |
+|--------|------------|
+| CPU | SH-4 @ 200 MHz is sufficient for Game Boy emulation with `gb_run_frame_dualfetch()` |
+| Endianness | SH-4 is little-endian — satisfies `WALNUT_GB_IS_LITTLE_ENDIAN=1` |
+| RAM | 16 MB main RAM; typical usage under 6 MB including ROM |
+| Display | 160×144 native; integer scale (3× → 480×432) centered on 640×480 |
+| Audio | AICA @ 44.1 kHz stereo via `snd_stream` + MiniGB APU |
+| Library fit | Callback-driven API maps cleanly to a KOS frontend |
+
+## Repository Layout
+
+```
+examples/dreamcast/
+├── PHASED_IMPLEMENTATION.md   # This file
+├── README.md                  # Build and run instructions
+├── Makefile                   # KOS build
+├── dc_priv.h                  # Shared frontend state
+├── walnut_dc.c                # Main, callbacks, emulation loop
+├── video.c / video.h          # PVR texture upload and present
+├── audio.c / audio.h          # snd_stream + MiniGB APU bridge
+├── input.c / input.h          # Maple controller → joypad
+├── rom_browser.c / rom_browser.h  # ROM/save file I/O and browser UI
+├── ui.c / ui.h                # 640x480 text UI for browser
+├── font8x8.h                  # Embedded ASCII font
+├── meta/ip.txt                # IP.BIN template for disc builds
+├── scripts/build-disc.sh      # ISO/CDI packaging helper
+└── palette.c / palette.h      # DMG palette auto-assignment (from SDL example)
+```
+
+MiniGB APU is compiled from `examples/sdl2/minigb_apu/` (shared, not duplicated).
+
+## Compile-Time Defines (SH-4)
+
+```c
+#define WALNUT_GB_IS_LITTLE_ENDIAN 1
+#define WALNUT_GB_32BIT_DMA        1
+#define WALNUT_GB_16BIT_DMA        0
+#define WALNUT_GB_32BIT_ALIGNED    1
+#define WALNUT_GB_USE_INTRINSICS   1
+#define ENABLE_LCD                 1
+#define ENABLE_SOUND               1
+#define WALNUT_GB_12_COLOUR        1
+```
+
+## Memory Budget (Estimated)
+
+| Allocation | Size |
+|------------|------|
+| `struct gb_s` | ~48–64 KB |
+| ROM buffer | 32 KB – 4 MB |
+| Cart RAM / save | 0 – 128 KB |
+| Framebuffer RGB555 | 46 KB |
+| Audio ring buffer | ~16 KB |
+| PVR texture (256×256) | 128 KB |
+| **Total typical** | **< 6 MB** of 16 MB |
+
+---
+
+## Phase 0 — Toolchain Smoke Test
+
+- [ ] KOS "hello world" builds and runs on Flycast + hardware
+- [ ] Confirm `sh-elf-gcc` compiles a TU that `#include`s `walnut_cgb.h`
+- [ ] Source `environ.sh` from KOS install; verify `$KOS_BASE` and `$KOS_PORTS`
+
+**Deliverable:** Developer environment documented in `README.md`.
+
+---
+
+## Phase 1 — Minimal Playable Core
+
+- [x] `examples/dreamcast/` scaffold with KOS `Makefile`
+- [x] ROM/RAM callbacks (`gb_rom_read`, `gb_cart_ram_read/write`, `gb_error`)
+- [x] `lcd_draw_line` → RGB555 framebuffer → PVR sprite present
+- [x] Maple controller → `gb->direct.joypad`
+- [x] `gb_run_frame_dualfetch()` main loop at ~59.73 Hz
+- [ ] Boot test: DMG title screen at full speed on Flycast/hardware
+
+**Usage (dcload):**
+
+```bash
+dc-tool -x walnut-dc.elf /pc/roms/game.gb
+```
+
+**Deliverable:** Single ROM boots with graphics and controls.
+
+---
+
+## Phase 2 — Audio & Saves
+
+- [x] MiniGB APU wired through `snd_stream`
+- [x] Save/load `.sav` to FAT (`/pc`, `/sd`, `/cd`)
+- [x] Error handler writes `recovery.sav`
+- [x] Autosave every 60 seconds during play
+- [ ] Boot test: playable session with sound and persistent save
+
+**Deliverable:** Full play session with audio and save persistence.
+
+---
+
+## Phase 3 — ROM Browser & Polish
+
+- [x] Directory scanner for `/cd`, `/sd`, `/ide`, `/pc`
+- [x] Simple text UI for ROM selection
+- [x] Boot disc metadata (`IP.BIN` template, `scripts/build-disc.sh`)
+- [x] Palette cycling (Y button) and fast-forward (triggers)
+- [x] Frameskip toggle (X button)
+- [x] Start+B returns to browser when launched without ROM argument
+- [ ] Burn test: self-bootable CDI/GDI on hardware
+
+**Deliverable:** Self-contained CDI/GDI image without PC assistance.
+
+---
+
+## Phase 4 — Release Hardening
+
+- [ ] Test matrix: DMG, CGB, MBC1/2/3/5, RTC (Pokémon Gold/Silver)
+- [ ] Hardware test: stock GD-ROM, IDE mod, SD adapter
+- [ ] Compare save files against SDL frontend for same ROM
+- [ ] Publish CDI/GDI to GitHub Releases
+
+**Deliverable:** Reproducible release build with test notes.
+
+---
+
+## Controller Map
+
+| GB button | Dreamcast |
+|-----------|-----------|
+| A | A |
+| B | B |
+| Start | Start |
+| Select | X |
+| D-Pad | D-Pad |
+
+| Extra | Action |
+|-------|--------|
+| Start + A | Reset game |
+| Start + B | Exit (return to browser in Phase 3) |
+| Y | Cycle palette |
+| L / R trigger | Fast-forward toggle |
+
+---
+
+## Testing Strategy
+
+| Layer | Method |
+|-------|--------|
+| Core accuracy | Host `make -C test` (unchanged) |
+| DC build | `sh-elf-gcc -Wall -Wextra` clean compile |
+| Functional | cpu_instrs, dmg-acid2 via dcload |
+| Game spot-checks | Tetris, Pokémon Blue, Oracle of Seasons, Shantae |
+| Performance | Flycast FPS overlay; serial debug on hardware |
+
+---
+
+## Success Criteria
+
+1. DMG and CGB games run at full speed without frameskip
+2. Audio is stable (no persistent crackle)
+3. Saves persist across sessions on FAT
+4. User can select ROMs from disc/SD (Phase 3)
+5. Build is reproducible from README + standard KOS toolchain
+
+---
+
+## References
+
+- [dreamcast.wiki — Getting Started](https://dreamcast.wiki/Getting_Started_with_Dreamcast_development)
+- [KallistiOS documentation](https://kos-docs.dreamcast.wiki/)
+- SDL reference frontend: `examples/sdl2/walnut_sdl.c`
+- Embedded reference: `examples/arduino/arduino.ino`
