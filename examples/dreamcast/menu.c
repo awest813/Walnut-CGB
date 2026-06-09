@@ -10,6 +10,7 @@
 #include <kos.h>
 #include <dc/maple/controller.h>
 
+#include "display.h"
 #include "menu.h"
 #include "palette.h"
 #include "settings.h"
@@ -371,7 +372,7 @@ void dc_controls_menu_run(void)
 		"L/R = Fast-forward (2x)",
 		"",
 		"ROM Library",
-		"A = Load  B = Next device",
+		"A = Load  B = Next device  Y = Grid/List",
 		"Start = Refresh  X = Back"
 	};
 	uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH];
@@ -417,6 +418,7 @@ static void dc_settings_format_row(const struct dc_settings *settings, int row,
 {
 	const char *labels[DC_SETTINGS_ROW_COUNT] = {
 		"Palette",
+		"Video output",
 		"Scale mode",
 		"Status bar",
 		"Frameskip",
@@ -434,25 +436,29 @@ static void dc_settings_format_row(const struct dc_settings *settings, int row,
 		break;
 	case 1:
 		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
-			 dc_video_scale_mode_name(settings->scale_mode));
+			 dc_video_output_name(settings->video_output));
 		break;
 	case 2:
 		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
-			 settings->status_bar ? "On" : "Off");
+			 dc_video_scale_mode_name(settings->scale_mode));
 		break;
 	case 3:
 		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
-			 settings->frameskip ? "On" : "Off");
+			 settings->status_bar ? "On" : "Off");
 		break;
 	case 4:
 		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
-			 settings->autosave_enabled ? "On" : "Off");
+			 settings->frameskip ? "On" : "Off");
 		break;
 	case 5:
+		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
+			 settings->autosave_enabled ? "On" : "Off");
+		break;
+	case 6:
 		snprintf(line, line_len, "%c %s: %d sec", marker, labels[row],
 			 settings->autosave_interval_sec);
 		break;
-	case 6:
+	case 7:
 		snprintf(line, line_len, "%c %s: %s%u%%", marker, labels[row],
 			 settings->muted ? "Mute " : "",
 			 settings->muted ? 0U : settings->volume);
@@ -554,29 +560,36 @@ static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_r
 			dc_toast_show(dc_palette_name(settings->palette_index), 1000);
 			break;
 		case 1:
+			settings->video_output =
+				(enum dc_video_output)((settings->video_output + inc +
+							DC_VIDEO_OUTPUT_COUNT) %
+						       DC_VIDEO_OUTPUT_COUNT);
+			dc_toast_show(dc_video_output_name(settings->video_output), 1000);
+			break;
+		case 2:
 			settings->scale_mode =
 				(enum dc_scale_mode)((settings->scale_mode + inc + DC_SCALE_COUNT) %
 						     DC_SCALE_COUNT);
 			dc_toast_show(dc_video_scale_mode_name(settings->scale_mode), 1000);
 			break;
-		case 2:
+		case 3:
 			settings->status_bar = !settings->status_bar;
 			dc_toast_show(settings->status_bar ? "Status bar on" :
 							       "Status bar off",
 				      1000);
 			break;
-		case 3:
+		case 4:
 			settings->frameskip = !settings->frameskip;
 			dc_toast_show(settings->frameskip ? "Frameskip on" : "Frameskip off",
 				      1000);
 			break;
-		case 4:
+		case 5:
 			settings->autosave_enabled = !settings->autosave_enabled;
 			dc_toast_show(settings->autosave_enabled ? "Autosave on" :
 								   "Autosave off",
 				      1000);
 			break;
-		case 5:
+		case 6:
 			settings->autosave_interval_sec += inc * 10;
 			if (settings->autosave_interval_sec < DC_SETTINGS_AUTOSAVE_MIN_SEC)
 				settings->autosave_interval_sec = DC_SETTINGS_AUTOSAVE_MIN_SEC;
@@ -586,7 +599,7 @@ static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_r
 				 settings->autosave_interval_sec);
 			dc_toast_show(toast_line, 1000);
 			break;
-		case 6:
+		case 7:
 			if (settings->muted) {
 				settings->muted = false;
 				dc_toast_show("Audio unmuted", 1000);
@@ -612,7 +625,7 @@ static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_r
 		changed_value = true;
 	}
 
-	if ((buttons & CONT_A) && (changed & CONT_A) && *selected_row == 6) {
+	if ((buttons & CONT_A) && (changed & CONT_A) && *selected_row == 7) {
 		settings->muted = !settings->muted;
 		dc_toast_show(settings->muted ? "Audio muted" : "Audio unmuted", 1000);
 		changed_value = true;
@@ -620,7 +633,7 @@ static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_r
 
 	if (((buttons & CONT_B) && (changed & CONT_B)) ||
 	    ((buttons & CONT_X) && (changed & CONT_X)) ||
-	    ((buttons & CONT_A) && (changed & CONT_A) && *selected_row != 6))
+	    ((buttons & CONT_A) && (changed & CONT_A) && *selected_row != 7))
 		*done = true;
 
 	previous_buttons = buttons;

@@ -28,6 +28,7 @@ static const char *dc_settings_paths[] = {
 void dc_settings_init_defaults(struct dc_settings *settings)
 {
 	settings->palette_index = 3;
+	settings->video_output = DC_VIDEO_OUTPUT_AUTO;
 	settings->scale_mode = DC_SCALE_3X;
 	settings->status_bar = true;
 	settings->frameskip = false;
@@ -51,6 +52,9 @@ static void dc_settings_clamp(struct dc_settings *settings)
 	if (settings->palette_index >= DC_PALETTE_COUNT)
 		settings->palette_index = 3;
 
+	if (settings->video_output >= DC_VIDEO_OUTPUT_COUNT)
+		settings->video_output = DC_VIDEO_OUTPUT_AUTO;
+
 	if (settings->scale_mode >= DC_SCALE_COUNT)
 		settings->scale_mode = DC_SCALE_3X;
 
@@ -73,6 +77,12 @@ static int dc_settings_parse_line(struct dc_settings *settings, const char *line
 	if (sscanf(line, " palette_index = %d", &value) == 1 ||
 	    sscanf(line, "palette_index=%d", &value) == 1) {
 		settings->palette_index = (uint8_t)value;
+		return 0;
+	}
+
+	if (sscanf(line, " video_output = %d", &value) == 1 ||
+	    sscanf(line, "video_output=%d", &value) == 1) {
+		settings->video_output = (enum dc_video_output)value;
 		return 0;
 	}
 
@@ -161,6 +171,7 @@ int dc_settings_save(const struct dc_settings *settings)
 			continue;
 
 		fprintf(f, "palette_index=%u\n", settings->palette_index);
+		fprintf(f, "video_output=%d\n", (int)settings->video_output);
 		fprintf(f, "scale_mode=%d\n", (int)settings->scale_mode);
 		fprintf(f, "status_bar=%d\n", settings->status_bar ? 1 : 0);
 		fprintf(f, "frameskip=%d\n", settings->frameskip ? 1 : 0);

@@ -29,6 +29,7 @@ void audio_write(uint16_t addr, uint8_t val);
 #include "../../walnut_cgb.h"
 
 #include "audio.h"
+#include "display.h"
 #include "dc_priv.h"
 #include "input.h"
 #include "menu.h"
@@ -54,6 +55,7 @@ static int dc_autosave_interval_frames(void)
 
 static void dc_apply_av_settings(void)
 {
+	dc_display_init(app_settings.video_output);
 	dc_video_set_scale_mode(app_settings.scale_mode);
 #if ENABLE_SOUND
 	dc_audio_configure(app_settings.volume, app_settings.muted,
@@ -502,7 +504,8 @@ int main(int argc, char **argv)
 	char selected_rom[256];
 	bool show_start_menu = true;
 
-	vid_set_mode(DM_640x480, PM_RGB555);
+	dc_settings_load(&app_settings);
+	dc_apply_av_settings();
 	vid_clear(0, 0, 0);
 
 	if (dc_video_init() != 0) {
@@ -516,9 +519,7 @@ int main(int argc, char **argv)
 #endif
 
 	dc_input_init();
-	dc_settings_load(&app_settings);
 	palette_selection = app_settings.palette_index;
-	dc_apply_av_settings();
 	dc_browser_init(&browser);
 
 	if (argc >= 2) {

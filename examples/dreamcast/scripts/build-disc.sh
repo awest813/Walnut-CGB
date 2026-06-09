@@ -18,6 +18,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/disc-build"
 ISO_DIR="${BUILD_DIR}/iso"
 ROM_DIR="${ISO_DIR}/roms"
+COVERS_DIR="${ISO_DIR}/covers"
 MAKEIP="${MAKEIP:-makeip}"
 OBJCOPY="${KOS_OBJCOPY:-sh-elf-objcopy}"
 SCRAMBLE="${SCRAMBLE:-scramble}"
@@ -41,7 +42,7 @@ make
 
 # A Dreamcast boot binary is a flat, scrambled image named 1ST_READ.BIN —
 # the raw ELF will not boot. Strip to a flat binary, then scramble it.
-mkdir -p "${ROM_DIR}"
+mkdir -p "${ROM_DIR}" "${COVERS_DIR}"
 "${OBJCOPY}" -R .stack -O binary "${ROOT_DIR}/walnut-dc.elf" "${BUILD_DIR}/walnut-dc.bin"
 "${SCRAMBLE}" "${BUILD_DIR}/walnut-dc.bin" "${ISO_DIR}/1ST_READ.BIN"
 
@@ -69,3 +70,4 @@ if command -v cdi4dc >/dev/null 2>&1; then
 fi
 
 echo "Place .gb/.gbc ROM files in ${ROM_DIR} before burning."
+echo "Optional cover art (.w555) goes in ${COVERS_DIR} — see covers/README.md."

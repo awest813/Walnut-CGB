@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "display.h"
 #include "video.h"
 
 #define DC_SETTINGS_AUTOSAVE_MIN_SEC 10
@@ -18,7 +19,7 @@
 #define DC_SETTINGS_VOLUME_MIN 0
 #define DC_SETTINGS_VOLUME_MAX 100
 #define DC_SETTINGS_VOLUME_DEFAULT 100
-#define DC_SETTINGS_ROW_COUNT 8
+#define DC_SETTINGS_ROW_COUNT 9
 
 enum dc_audio_buffer_mode
 {
@@ -31,6 +32,7 @@ enum dc_audio_buffer_mode
 struct dc_settings
 {
 	uint8_t palette_index;
+	enum dc_video_output video_output;
 	enum dc_scale_mode scale_mode;
 	bool status_bar;
 	bool frameskip;

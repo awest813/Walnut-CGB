@@ -52,9 +52,15 @@ Browser controls (D-pad or analog stick; hold to repeat):
 | A | Load selected ROM |
 | B | Next device/path |
 | Start | Refresh list |
+| Y | Toggle list / grid view |
 | X | Back to main menu |
 
-The header shows a friendly device name (for example **GD-ROM** or **SD Card**) plus the scan path. ROMs with an existing `.sav` file are marked with **[SAV]**.
+The header shows a friendly device name (for example **GD-ROM** or **SD Card**) plus the scan path.
+
+- **List view** — ROM titles from the cartridge header, with a large cover preview on the right
+- **Grid view** — 5×3 cover grid (procedural placeholders or your own art)
+- **[SAV]** when a matching `.sav` exists
+- Optional cover files: `covers/ROMNAME.w555` (see [covers/README.md](covers/README.md))
 
 ### Direct ROM load (dcload)
 
