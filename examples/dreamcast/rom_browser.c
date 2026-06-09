@@ -19,11 +19,12 @@
 #include "video.h"
 
 #define DC_BROWSER_LINE_HEIGHT 22
-#define DC_BROWSER_LIST_TOP    58
+#define DC_BROWSER_LIST_TOP    68
 #define DC_BROWSER_LIST_LEFT   8
 #define DC_BROWSER_LIST_WIDTH  268
 #define DC_BROWSER_PREVIEW_X   288
-#define DC_BROWSER_GRID_TOP    58
+#define DC_BROWSER_GRID_TOP    68
+#define DC_BROWSER_HELP_Y      56
 #define DC_BROWSER_GRID_CELL_W 120
 #define DC_BROWSER_GRID_CELL_H 108
 #define DC_REPEAT_DELAY_FRAMES 18
@@ -178,20 +179,18 @@ int dc_browser_scan(struct dc_browser *browser)
 static void dc_browser_draw_header(const struct dc_browser *browser,
 				   uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH])
 {
-	char line[96];
+	char subtitle[96];
 
-	dc_ui_fill_rect(screen, 0, 0, DC_SCREEN_WIDTH, 28, DC_UI_COLOR_HEADER);
-	snprintf(line, sizeof(line), "ROM Library  %s  [%s]",
+	snprintf(subtitle, sizeof(subtitle), "%s  [%s]  %s",
 		 dc_browser_device_label(browser),
-		 browser->view == DC_BROWSER_VIEW_GRID ? "Grid" : "List");
-	dc_ui_draw_text(screen, 12, 10, line, DC_UI_COLOR_BG, DC_UI_COLOR_HEADER);
-	snprintf(line, sizeof(line), "%s  |  covers: %s",
-		 browser->root_path, browser->covers_path);
-	dc_ui_draw_text_clipped(screen, 12, 34, DC_SCREEN_WIDTH - 24, line,
+		 browser->view == DC_BROWSER_VIEW_GRID ? "Grid" : "List",
+		 browser->root_path);
+	subtitle[sizeof(subtitle) - 1] = '\0';
+	dc_ui_draw_header(screen, "ROM Library", subtitle);
+	dc_ui_draw_text_clipped(screen, DC_UI_MARGIN_X, DC_BROWSER_HELP_Y,
+				DC_SCREEN_WIDTH - DC_UI_MARGIN_X * 2,
+				"A:Load  B:Device  Y:View  L/R:Page  Start:Refresh  X:Back",
 				DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
-	dc_ui_draw_text(screen, 12, 48,
-			"A:Load  B:Device  Y:View  Start:Refresh  X:Back",
-			DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
 }
 
 static void dc_browser_draw_preview_panel(struct dc_browser *browser,
@@ -209,8 +208,9 @@ static void dc_browser_draw_preview_panel(struct dc_browser *browser,
 	entry = &browser->entries[browser->selected];
 	dc_browser_entry_prepare_cover(browser, entry);
 
-	dc_ui_fill_rect(screen, DC_BROWSER_PREVIEW_X, 58, DC_SCREEN_WIDTH - DC_BROWSER_PREVIEW_X,
-			360, DC_UI_COLOR_PANEL);
+	dc_ui_draw_panel(screen, DC_BROWSER_PREVIEW_X, DC_BROWSER_LIST_TOP,
+			 DC_SCREEN_WIDTH - DC_BROWSER_PREVIEW_X,
+			 DC_UI_FOOTER_Y - DC_BROWSER_LIST_TOP - 8, DC_UI_COLOR_PANEL);
 	dc_cover_draw(screen, cover_x, cover_y, 160, 160, entry->cover);
 	dc_ui_draw_text(screen, DC_BROWSER_PREVIEW_X + 8, 248, entry->title,
 			DC_UI_COLOR_TITLE, DC_UI_COLOR_PANEL);
@@ -250,8 +250,9 @@ static void dc_browser_draw_list(const struct dc_browser *browser,
 				bg = DC_UI_COLOR_SELECT;
 			}
 
-			snprintf(line, sizeof(line), "%c %s",
-				 index == browser->selected ? '>' : ' ', entry->title);
+			snprintf(line, sizeof(line), "%c %s%s",
+				 index == browser->selected ? '>' : ' ',
+				 entry->title, entry->has_save ? " [SAV]" : "");
 			dc_ui_draw_text_ellipsis(screen, DC_BROWSER_LIST_LEFT + 8, y,
 						DC_BROWSER_LIST_WIDTH - 16, line, fg, bg);
 		}
@@ -286,6 +287,9 @@ static void dc_browser_draw_grid(const struct dc_browser *browser,
 						DC_UI_COLOR_SELECT);
 
 			dc_cover_draw(screen, x + 10, y + 4, 80, 80, entry->cover);
+			if (entry->has_save)
+				dc_ui_fill_rect(screen, x + 86, y + 4, 8, 8,
+						DC_UI_COLOR_SAVE);
 			dc_ui_draw_text_ellipsis(screen, x + 4, y + 88,
 						DC_BROWSER_GRID_CELL_W - 8,
 						entry->title, DC_UI_COLOR_FG, DC_UI_COLOR_BG);
@@ -302,14 +306,18 @@ static void dc_browser_draw(const struct dc_browser *browser,
 	dc_browser_draw_header(browser, screen);
 
 	if (browser->count == 0) {
-		dc_ui_draw_text(screen, 12, 88, "No ROM files found.",
-				DC_UI_COLOR_FG, DC_UI_COLOR_BG);
-		dc_ui_draw_text(screen, 12, 112,
-				"Add .gb/.gbc files, then press Start to refresh.",
-				DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
-		dc_ui_draw_text(screen, 12, 136,
-				"Optional cover art: covers/ROMNAME.w555",
-				DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+		dc_ui_draw_panel(screen, 72, 108, 496, 168, DC_UI_COLOR_PANEL);
+		dc_ui_draw_text(screen, 96, 132, "No ROM files found.",
+				DC_UI_COLOR_TITLE, DC_UI_COLOR_PANEL);
+		dc_ui_draw_text(screen, 96, 160,
+				"Add .gb/.gbc files to this device path,",
+				DC_UI_COLOR_FG, DC_UI_COLOR_PANEL);
+		dc_ui_draw_text(screen, 96, 184,
+				"then press Start to refresh the list.",
+				DC_UI_COLOR_FG, DC_UI_COLOR_PANEL);
+		dc_ui_draw_text(screen, 96, 220,
+				"Box art: covers/boxart/GB|GBC/ROMNAME.w555",
+				DC_UI_COLOR_DIM, DC_UI_COLOR_PANEL);
 		dc_toast_draw(screen);
 		return;
 	}
@@ -321,7 +329,7 @@ static void dc_browser_draw(const struct dc_browser *browser,
 
 	snprintf(line, sizeof(line), "%d / %d ROMs", browser->selected + 1,
 		 browser->count);
-	dc_ui_draw_text(screen, 12, 452, line, DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+	dc_ui_draw_footer(screen, line);
 	dc_toast_draw(screen);
 }
 
@@ -329,12 +337,19 @@ void dc_browser_show_loading(const char *rom_name)
 {
 	uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH];
 	char subtitle[64];
+	int frame;
 
 	snprintf(subtitle, sizeof(subtitle), "Loading %s",
 		 rom_name ? rom_name : "ROM");
 	subtitle[sizeof(subtitle) - 1] = '\0';
-	dc_ui_draw_loading(screen, "Starting Game", subtitle);
-	dc_video_present_screen(screen);
+
+	for (frame = 0; frame <= 12; frame++) {
+		const int progress = frame * 100 / 12;
+
+		dc_ui_draw_loading(screen, "Starting Game", subtitle, progress);
+		dc_video_present_screen(screen);
+		timer_spin(DC_FRAME_MS);
+	}
 }
 
 /*

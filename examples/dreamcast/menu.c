@@ -18,11 +18,13 @@
 #include "ui.h"
 #include "video.h"
 
-#define DC_SETTINGS_LINE_HEIGHT 24
+#define DC_SETTINGS_LINE_HEIGHT 22
 #define DC_SETTINGS_LIST_TOP    72
 
 #define DC_MENU_LINE_HEIGHT    28
 #define DC_MENU_LIST_TOP       120
+
+#define DC_CONTROLS_LINE_HEIGHT 20
 #define DC_MENU_REPEAT_DELAY   18
 #define DC_MENU_REPEAT_RATE    4
 #define DC_MENU_ANALOG_THRESH  64
@@ -120,12 +122,7 @@ static void dc_menu_draw_list(const struct dc_menu_list *menu,
 	int i;
 
 	dc_ui_clear(screen, DC_UI_COLOR_BG);
-	dc_ui_fill_rect(screen, 0, 0, DC_SCREEN_WIDTH, 36, DC_UI_COLOR_HEADER);
-	dc_ui_draw_text(screen, 12, 12, menu->title, DC_UI_COLOR_BG, DC_UI_COLOR_HEADER);
-
-	if (menu->subtitle && menu->subtitle[0] != '\0')
-		dc_ui_draw_text(screen, 12, 48, menu->subtitle, DC_UI_COLOR_DIM,
-				DC_UI_COLOR_BG);
+	dc_ui_draw_header(screen, menu->title, menu->subtitle);
 
 	for (i = 0; i < menu->count; i++) {
 		const int y = DC_MENU_LIST_TOP + i * DC_MENU_LINE_HEIGHT;
@@ -145,7 +142,7 @@ static void dc_menu_draw_list(const struct dc_menu_list *menu,
 	}
 
 	if (footer)
-		dc_ui_draw_text(screen, 12, 452, footer, DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+		dc_ui_draw_footer(screen, footer);
 
 	dc_toast_draw(screen);
 }
@@ -247,9 +244,7 @@ void dc_menu_show_message(const char *title, const char *message, int duration_m
 	const uint64_t end_time = timer_ms_gettime64() + (uint64_t)duration_ms;
 
 	dc_ui_clear(screen, DC_UI_COLOR_BG);
-	dc_ui_fill_rect(screen, 0, 0, DC_SCREEN_WIDTH, 36, DC_UI_COLOR_HEADER);
-	dc_ui_draw_text(screen, 12, 12, title ? title : "Walnut-CGB",
-			DC_UI_COLOR_BG, DC_UI_COLOR_HEADER);
+	dc_ui_draw_header(screen, title ? title : "Walnut-CGB", NULL);
 	dc_ui_draw_text(screen, 120, 220, message ? message : "", DC_UI_COLOR_FG,
 			DC_UI_COLOR_BG);
 
@@ -294,7 +289,8 @@ enum dc_main_menu_action dc_main_menu_run(void)
 
 enum dc_pause_menu_action dc_pause_menu_run(const char *rom_title, bool has_save)
 {
-	char subtitle[64];
+	char subtitle[80];
+	char paused_line[80];
 	static const char *items_with_save[] = {
 		"Resume",
 		"Save Game",
@@ -312,8 +308,10 @@ enum dc_pause_menu_action dc_pause_menu_run(const char *rom_title, bool has_save
 	struct dc_menu_list menu;
 	int choice;
 
-	snprintf(subtitle, sizeof(subtitle), "Paused: %s",
+	snprintf(paused_line, sizeof(paused_line), "Paused: %s",
 		 rom_title ? rom_title : "Game");
+	paused_line[sizeof(paused_line) - 1] = '\0';
+	snprintf(subtitle, sizeof(subtitle), "%.68s", paused_line);
 	subtitle[sizeof(subtitle) - 1] = '\0';
 
 	if (has_save) {
@@ -367,6 +365,64 @@ void dc_menu_set_settings_apply_callback(dc_settings_apply_cb callback)
 	settings_apply_cb = callback;
 }
 
+static int dc_controls_count_lines(const char *const *lines, unsigned int count)
+{
+	unsigned int i;
+	int visible = 0;
+
+	for (i = 0; i < count; i++) {
+		if (lines[i][0] != '\0')
+			visible++;
+	}
+
+	return visible;
+}
+
+static bool dc_controls_is_section_title(const char *const *lines, unsigned int index)
+{
+	if (!lines[index][0])
+		return false;
+	if (strchr(lines[index], '=') != NULL)
+		return false;
+
+	return index == 0 || lines[index - 1][0] == '\0';
+}
+
+static void dc_controls_draw(uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH],
+			     const char *const *lines, unsigned int count,
+			     int scroll)
+{
+	unsigned int i;
+	int line_index = 0;
+	int y = DC_UI_CONTENT_TOP;
+
+	dc_ui_clear(screen, DC_UI_COLOR_BG);
+	dc_ui_draw_header(screen, "Controls", "Button reference");
+	dc_ui_draw_footer(screen, "Up/Dn:Scroll  B:Back");
+
+	for (i = 0; i < count; i++) {
+		uint16_t color = DC_UI_COLOR_FG;
+
+		if (lines[i][0] == '\0')
+			continue;
+
+		if (line_index < scroll) {
+			line_index++;
+			continue;
+		}
+
+		if (y + 8 > DC_UI_FOOTER_Y)
+			break;
+
+		if (dc_controls_is_section_title(lines, i))
+			color = DC_UI_COLOR_TITLE;
+
+		dc_ui_draw_text(screen, 24, y, lines[i], color, DC_UI_COLOR_BG);
+		y += DC_CONTROLS_LINE_HEIGHT;
+		line_index++;
+	}
+}
+
 void dc_controls_menu_run(void)
 {
 	static const char *lines[] = {
@@ -387,40 +443,51 @@ void dc_controls_menu_run(void)
 		"",
 		"ROM Library",
 		"A = Load  B = Next device  Y = Grid/List",
-		"Start = Refresh  X = Back"
+		"Left/Right = Page  Start = Refresh  X = Back"
 	};
+	const unsigned int line_count = sizeof(lines) / sizeof(lines[0]);
+	const int visible_lines =
+		(DC_UI_FOOTER_Y - DC_UI_CONTENT_TOP) / DC_CONTROLS_LINE_HEIGHT;
+	const int total_lines = dc_controls_count_lines(lines, line_count);
+	int scroll = 0;
 	uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH];
-	unsigned int i;
+	bool dirty = true;
 
 	while (1) {
 		const uint64_t frame_start = timer_ms_gettime64();
 		struct dc_menu_input input;
 		uint64_t elapsed;
+		int max_scroll;
 
-		dc_ui_clear(screen, DC_UI_COLOR_BG);
-		dc_ui_fill_rect(screen, 0, 0, DC_SCREEN_WIDTH, 36, DC_UI_COLOR_HEADER);
-		dc_ui_draw_text(screen, 12, 12, "Controls", DC_UI_COLOR_BG,
-				DC_UI_COLOR_HEADER);
+		max_scroll = total_lines - visible_lines;
+		if (max_scroll < 0)
+			max_scroll = 0;
+		if (scroll > max_scroll)
+			scroll = max_scroll;
 
-		for (i = 0; i < sizeof(lines) / sizeof(lines[0]); i++) {
-			const int y = 56 + (int)i * 24;
-			uint16_t color = DC_UI_COLOR_FG;
-
-			if (lines[i][0] == '\0')
-				continue;
-			if (lines[i][0] != '\0' && strchr(lines[i], '=') == NULL &&
-			    (i == 0 || lines[i - 1][0] == '\0'))
-				color = DC_UI_COLOR_TITLE;
-
-			dc_ui_draw_text(screen, 24, y, lines[i], color, DC_UI_COLOR_BG);
+		if (dirty) {
+			dc_controls_draw(screen, lines, line_count, scroll);
+			dc_video_present_screen(screen);
+			dirty = false;
 		}
-
-		dc_ui_draw_text(screen, 12, 452, "B:Back", DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
-		dc_video_present_screen(screen);
 
 		dc_menu_poll_input(&input);
 		if (input.back)
 			return;
+
+		if (input.up) {
+			scroll--;
+			if (scroll < 0)
+				scroll = 0;
+			dirty = true;
+		}
+
+		if (input.down) {
+			scroll++;
+			if (scroll > max_scroll)
+				scroll = max_scroll;
+			dirty = true;
+		}
 
 		elapsed = timer_ms_gettime64() - frame_start;
 		if (elapsed < DC_MENU_FRAME_MS)
@@ -493,10 +560,7 @@ static void dc_settings_draw_value_screen(const struct dc_settings *settings,
 	int row;
 
 	dc_ui_clear(screen, DC_UI_COLOR_BG);
-	dc_ui_fill_rect(screen, 0, 0, DC_SCREEN_WIDTH, 36, DC_UI_COLOR_HEADER);
-	dc_ui_draw_text(screen, 12, 12, "Settings", DC_UI_COLOR_BG, DC_UI_COLOR_HEADER);
-	dc_ui_draw_text(screen, 12, 48, "Video, status bar, and audio options.",
-			DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+	dc_ui_draw_header(screen, "Settings", "Video, status bar, and audio options.");
 
 	for (row = 0; row < DC_SETTINGS_ROW_COUNT; row++) {
 		const int y = DC_SETTINGS_LIST_TOP + row * DC_SETTINGS_LINE_HEIGHT;
@@ -515,9 +579,7 @@ static void dc_settings_draw_value_screen(const struct dc_settings *settings,
 		dc_ui_draw_text_clipped(screen, 32, y, DC_SCREEN_WIDTH - 48, line, fg, bg);
 	}
 
-	dc_ui_draw_text(screen, 12, 452,
-			"Up/Dn:Row  L/R:Change  A:Mute(vol)  B:Back",
-			DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+	dc_ui_draw_footer(screen, "Up/Dn:Row  L/R:Change  A:Mute(vol)  B:Back");
 	dc_toast_draw(screen);
 }
 

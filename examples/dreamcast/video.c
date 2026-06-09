@@ -237,7 +237,7 @@ void dc_video_present_overlays(const char *status_text)
 {
 	const int status_h = 20;
 	const int toast_h = 28;
-	const int toast_y = 452;
+	const int toast_y = DC_UI_FOOTER_Y;
 	const bool has_status = status_text && status_text[0] != '\0';
 	const bool has_toast = dc_toast_active();
 	const float u1 = (float)DC_SCREEN_WIDTH / (float)DC_UI_TEX_WIDTH;
