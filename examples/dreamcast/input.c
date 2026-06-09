@@ -49,6 +49,7 @@ void dc_input_poll(struct dc_input_state *state, struct gb_s *gb)
 
 	state->reset_game = false;
 	state->exit_requested = false;
+	state->pause_requested = false;
 	state->cycle_palette = false;
 	state->toggle_frameskip = false;
 
@@ -80,7 +81,11 @@ void dc_input_poll(struct dc_input_state *state, struct gb_s *gb)
 		if ((buttons & CONT_START) && (buttons & CONT_B) &&
 		    (changed & CONT_B))
 			state->exit_requested = true;
-		if ((buttons & CONT_Y) && (changed & CONT_Y))
+		if ((buttons & CONT_START) && (buttons & CONT_Y) &&
+		    (changed & CONT_Y))
+			state->pause_requested = true;
+		if ((buttons & CONT_Y) && (changed & CONT_Y) &&
+		    !(buttons & CONT_START))
 			state->cycle_palette = true;
 		/*
 		 * X alone is Game Boy Select, so gate the frameskip toggle
