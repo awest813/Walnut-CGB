@@ -7,10 +7,12 @@
 #ifndef DC_AUDIO_H
 #define DC_AUDIO_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 int dc_audio_init(void);
 void dc_audio_shutdown(void);
+bool dc_audio_ready(void);
 void dc_audio_frame(void);
 
 uint8_t dc_audio_read(uint16_t addr);
