@@ -39,7 +39,7 @@ Scans these paths (press **B** to cycle devices):
 | `/ide/roms`, `/ide` | IDE/GDEMU/ODE |
 | `/pc` | dcload transfer target |
 
-Browser controls:
+Browser controls (D-pad or analog stick; hold to repeat):
 
 | Button | Action |
 |--------|--------|
@@ -81,7 +81,7 @@ Load `walnut-dc.elf` with a ROM path argument if your loader supports argv, or u
 | Start + A | Reset game |
 | Start + B | Return to browser (browser mode) or exit (direct load) |
 | Y | Cycle palette |
-| X | Toggle frameskip |
+| Start + X | Toggle frameskip |
 | L / R trigger | Fast-forward (2×) |
 
 ## Boot Disc (CDI/GDI)

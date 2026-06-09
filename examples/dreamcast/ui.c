@@ -11,10 +11,19 @@
 
 void dc_ui_clear(uint16_t fb[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH], uint16_t color)
 {
+	unsigned int x;
 	unsigned int y;
 
-	for (y = 0; y < DC_SCREEN_HEIGHT; y++)
-		memset(fb[y], color, DC_SCREEN_WIDTH * sizeof(uint16_t));
+	/*
+	 * memset fills bytes, so it only works when both halves of the
+	 * 16-bit colour are equal. Fill the first row pixel-by-pixel, then
+	 * replicate it to the rest of the framebuffer.
+	 */
+	for (x = 0; x < DC_SCREEN_WIDTH; x++)
+		fb[0][x] = color;
+
+	for (y = 1; y < DC_SCREEN_HEIGHT; y++)
+		memcpy(fb[y], fb[0], DC_SCREEN_WIDTH * sizeof(uint16_t));
 }
 
 void dc_ui_fill_rect(uint16_t fb[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH],

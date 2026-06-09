@@ -109,7 +109,7 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 - [x] Simple text UI for ROM selection
 - [x] Boot disc metadata (`IP.BIN` template, `scripts/build-disc.sh`)
 - [x] Palette cycling (Y button) and fast-forward (triggers)
-- [x] Frameskip toggle (X button)
+- [x] Frameskip toggle (Start + X)
 - [x] Start+B returns to browser when launched without ROM argument
 - [ ] Burn test: self-bootable CDI/GDI on hardware
 
@@ -142,6 +142,7 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 |-------|--------|
 | Start + A | Reset game |
 | Start + B | Exit (return to browser in Phase 3) |
+| Start + X | Toggle frameskip |
 | Y | Cycle palette |
 | L / R trigger | Fast-forward toggle |
 
