@@ -17,5 +17,6 @@ int dc_video_init(void);
 void dc_video_shutdown(void);
 void dc_video_present(const struct dc_priv *priv);
 void dc_video_present_screen(const uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH]);
+void dc_video_present_toast_overlay(void);
 
 #endif /* DC_VIDEO_H */

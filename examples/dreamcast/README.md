@@ -30,7 +30,7 @@ This produces `walnut-dc.elf`.
 dc-tool -x walnut-dc.elf
 ```
 
-Shows a start screen, then the main menu with **ROM Library**, **Settings**, and **Exit**.
+Shows a start screen, then the main menu with **ROM Library**, **Settings**, **Controls**, and **Exit**.
 
 ### ROM library
 
@@ -53,6 +53,8 @@ Browser controls (D-pad or analog stick; hold to repeat):
 | B | Next device/path |
 | Start | Refresh list |
 | X | Back to main menu |
+
+The header shows a friendly device name (for example **GD-ROM** or **SD Card**) plus the scan path. ROMs with an existing `.sav` file are marked with **[SAV]**.
 
 ### Direct ROM load (dcload)
 
@@ -95,7 +97,7 @@ Accessible from the main menu or pause menu. Options are saved to `walnut-dc.cfg
 
 | Setting | Description |
 |---------|-------------|
-| Palette index | DMG colour palette (0–12) |
+| Palette | DMG colour palette (named presets) |
 | Frameskip | Skip LCD updates for speed |
 | Autosave | Periodic battery-RAM save during play |
 | Autosave interval | Seconds between autosaves (10–300) |
@@ -123,6 +125,14 @@ Disc metadata is defined in `meta/ip.txt` (processed by KOS `makeip`).
 See [PHASED_IMPLEMENTATION.md](PHASED_IMPLEMENTATION.md) for the port roadmap and checklist.
 
 Phase 3 (ROM browser + disc packaging) is implemented. Phase 4 hardware validation remains.
+
+## UX Features
+
+- **Controls** screen in the main menu
+- **Toast messages** for palette changes, frameskip, fast-forward, and autosave
+- **Save/load confirmations** in the pause menu
+- **Loading screen** when starting a ROM from the browser
+- **Save indicators** in the ROM library
 
 ## Licensing
 
