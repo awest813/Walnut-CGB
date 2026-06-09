@@ -23,7 +23,8 @@
 #define DC_UI_COLOR_TRACK      0x2108
 #define DC_UI_COLOR_THUMB      0x5294
 #define DC_UI_COLOR_SAVE       0x47E0
-#define DC_UI_COLOR_TOAST_BG   0x1084
+#define DC_UI_COLOR_PANEL      0x1084
+#define DC_UI_COLOR_TOAST_BG   DC_UI_COLOR_PANEL
 #define DC_UI_COLOR_TOAST_FG   0xFFFF
 #define DC_UI_COLOR_WARN       0xFC00
 

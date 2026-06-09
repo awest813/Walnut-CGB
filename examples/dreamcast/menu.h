@@ -34,7 +34,10 @@ enum dc_pause_menu_action
 bool dc_start_menu_run(void);
 enum dc_main_menu_action dc_main_menu_run(void);
 enum dc_pause_menu_action dc_pause_menu_run(const char *rom_title, bool has_save);
+typedef void (*dc_settings_apply_cb)(struct dc_settings *settings);
+
 bool dc_settings_menu_run(struct dc_settings *settings);
+void dc_menu_set_settings_apply_callback(dc_settings_apply_cb callback);
 void dc_controls_menu_run(void);
 void dc_menu_show_message(const char *title, const char *message, int duration_ms);
 

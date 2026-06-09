@@ -9,7 +9,8 @@ This document tracks the implementation plan for porting **Walnut-CGB** to the S
 | CPU | SH-4 @ 200 MHz is sufficient for Game Boy emulation with `gb_run_frame_dualfetch()` |
 | Endianness | SH-4 is little-endian — satisfies `WALNUT_GB_IS_LITTLE_ENDIAN=1` |
 | RAM | 16 MB main RAM; typical usage under 6 MB including ROM |
-| Display | 160×144 native; integer scale (3× → 480×432) centered on 640×480 |
+| Display | 160×144 native; 3×/4× integer, widescreen, or full-screen scale on 640×480 |
+| Video out | Auto-detect VGA cable; force VGA or TV in settings |
 | Audio | AICA @ 44.1 kHz stereo via `snd_stream` + MiniGB APU |
 | Library fit | Callback-driven API maps cleanly to a KOS frontend |
 
@@ -22,13 +23,17 @@ examples/dreamcast/
 ├── Makefile                   # KOS build
 ├── dc_priv.h                  # Shared frontend state
 ├── walnut_dc.c                # Main, callbacks, emulation loop
-├── video.c / video.h          # PVR texture upload and present
+├── video.c / video.h          # PVR texture upload, scale modes, overlays
+├── display.c / display.h      # VGA/TV/auto video output
 ├── audio.c / audio.h          # snd_stream + MiniGB APU bridge
 ├── input.c / input.h          # Maple controller → joypad
 ├── rom_browser.c / rom_browser.h  # ROM/save file I/O and ROM library UI
+├── cover.c / cover.h          # W555 box art + procedural placeholders
 ├── menu.c / menu.h            # Start, main, pause, and settings menus
 ├── settings.c / settings.h    # Persistent configuration
+├── toast.c / toast.h          # Transient on-screen notifications
 ├── ui.c / ui.h                # 640x480 text UI for menus and browser
+├── covers/boxart/             # xero/boxart CC0 cover art (.w555)
 ├── font8x8.h                  # Embedded ASCII font
 ├── meta/ip.txt                # IP.BIN template for disc builds
 ├── scripts/build-disc.sh      # ISO/CDI packaging helper
@@ -113,9 +118,12 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 - [x] Palette cycling (Y button) and fast-forward (triggers)
 - [x] Frameskip toggle (Start + X)
 - [x] Start+B returns to main menu when launched without ROM argument
-- [x] Start screen and main menu (ROM Library, Settings, Exit)
+- [x] Start screen and main menu (ROM Library, Settings, Controls, Exit)
 - [x] Pause menu with manual save/load (Start + Y)
-- [x] Persistent settings (`walnut-dc.cfg`)
+- [x] Persistent settings (`walnut-dc.cfg`) with live apply for video/audio
+- [x] ROM library list/grid views with box art (xero/boxart CC0)
+- [x] Scale modes, status bar HUD, volume/mute, audio buffer modes
+- [x] Toast notifications and controls reference screen
 - [ ] Burn test: self-bootable CDI/GDI on hardware
 
 **Deliverable:** Self-contained CDI/GDI image without PC assistance.
@@ -149,8 +157,9 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 | Start + Y | Pause menu |
 | Start + B | Exit to main menu (menu mode) |
 | Start + X | Toggle frameskip |
+| Start + L | Cycle scale mode |
 | Y | Cycle palette |
-| L / R trigger | Fast-forward toggle |
+| L / R trigger | Fast-forward (2×) |
 
 ---
 

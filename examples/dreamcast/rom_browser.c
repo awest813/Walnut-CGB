@@ -210,19 +210,19 @@ static void dc_browser_draw_preview_panel(struct dc_browser *browser,
 	dc_browser_entry_prepare_cover(browser, entry);
 
 	dc_ui_fill_rect(screen, DC_BROWSER_PREVIEW_X, 58, DC_SCREEN_WIDTH - DC_BROWSER_PREVIEW_X,
-			360, 0x1084);
+			360, DC_UI_COLOR_PANEL);
 	dc_cover_draw(screen, cover_x, cover_y, 160, 160, entry->cover);
 	dc_ui_draw_text(screen, DC_BROWSER_PREVIEW_X + 8, 248, entry->title,
-			DC_UI_COLOR_TITLE, 0x1084);
+			DC_UI_COLOR_TITLE, DC_UI_COLOR_PANEL);
 	dc_ui_draw_text_ellipsis(screen, DC_BROWSER_PREVIEW_X + 8, 272,
 				 DC_SCREEN_WIDTH - DC_BROWSER_PREVIEW_X - 16,
-				 entry->name, DC_UI_COLOR_FG, 0x1084);
+				 entry->name, DC_UI_COLOR_FG, DC_UI_COLOR_PANEL);
 	snprintf(line, sizeof(line), "%s%s%s",
 		 entry->is_cgb ? "GBC" : "DMG",
 		 entry->has_save ? "  [SAV]" : "",
 		 entry->cover_from_file ? "  Box art" : "  Placeholder");
 	dc_ui_draw_text(screen, DC_BROWSER_PREVIEW_X + 8, 296, line,
-			DC_UI_COLOR_DIM, 0x1084);
+			DC_UI_COLOR_DIM, DC_UI_COLOR_PANEL);
 }
 
 static void dc_browser_draw_list(const struct dc_browser *browser,
@@ -456,6 +456,7 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 {
 	uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH];
 	bool dirty = true;
+	bool toast_visible = false;
 
 	if (!browser || !selected_path || selected_len == 0)
 		return false;
@@ -466,13 +467,14 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 	while (1) {
 		const uint64_t frame_start = timer_ms_gettime64();
 		struct dc_browser_input input;
+		const bool toast_active = dc_toast_active();
 		uint64_t elapsed;
 
-		/* Only repaint and re-upload the UI texture when state changes. */
-		if (dirty) {
+		if (dirty || toast_active || toast_visible) {
 			dc_browser_draw(browser, screen);
 			dc_video_present_screen(screen);
 			dirty = false;
+			toast_visible = toast_active;
 		}
 
 		dc_browser_poll_input(browser, &input);
@@ -501,7 +503,7 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 		if (input.toggle_view) {
 			browser->view = browser->view == DC_BROWSER_VIEW_GRID ?
 					DC_BROWSER_VIEW_LIST : DC_BROWSER_VIEW_GRID;
-			browser->scroll = 0;
+			dc_browser_update_scroll(browser);
 			dc_toast_show(browser->view == DC_BROWSER_VIEW_GRID ?
 					      "Grid view" : "List view",
 				      1000);

@@ -28,7 +28,7 @@ enum dc_browser_view
 struct dc_browser_entry
 {
 	char path[256];
-	char name[48];
+	char name[96];
 	char title[17];
 	bool is_cgb;
 	bool has_save;

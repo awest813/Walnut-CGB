@@ -101,7 +101,7 @@ Load `walnut-dc.elf` with a ROM path argument if your loader supports argv, or u
 
 ## Settings
 
-Accessible from the main menu or pause menu. Options are saved to `walnut-dc.cfg` on the first writable path (`/pc`, `/sd`, `/ide`, or `/cd`):
+Accessible from the main menu or pause menu. Video and audio changes apply immediately while the menu is open. Options are saved to `walnut-dc.cfg` on the first writable path (`/pc`, `/sd`, `/ide`, or `/cd`):
 
 | Setting | Description |
 |---------|-------------|
@@ -153,6 +153,7 @@ Phase 3 (ROM browser + disc packaging) is implemented. Phase 4 hardware validati
 - **Audio controls** for volume, mute, and buffer size
 - **VGA mode** with auto cable detection (VGA box vs TV)
 - **Cover-art ROM picker** with list/grid views and bundled [xero/boxart](https://github.com/xero/boxart) GB/GBC art
+- **Live settings** for video output, scale, and audio while browsing options
 
 ## Licensing
 

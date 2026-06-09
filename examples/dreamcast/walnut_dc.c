@@ -63,6 +63,12 @@ static void dc_apply_av_settings(void)
 #endif
 }
 
+static void dc_on_settings_changed(struct dc_settings *settings)
+{
+	(void)settings;
+	dc_apply_av_settings();
+}
+
 static void dc_apply_settings_to_game(struct gb_s *gb, struct dc_priv *p)
 {
 	gb->direct.frame_skip = app_settings.frameskip;
@@ -404,12 +410,14 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 			app_settings.palette_index = (uint8_t)palette_selection;
 			dc_toast_show(dc_palette_name((uint8_t)palette_selection),
 				      DC_TOAST_DURATION_MS);
+			dc_settings_save(&app_settings);
 		}
 		if (input.toggle_frameskip) {
 			gb.direct.frame_skip = !gb.direct.frame_skip;
 			app_settings.frameskip = gb.direct.frame_skip;
 			dc_toast_show(gb.direct.frame_skip ? "Frameskip on" : "Frameskip off",
 				      DC_TOAST_DURATION_MS);
+			dc_settings_save(&app_settings);
 		}
 		if (input.cycle_scale) {
 			app_settings.scale_mode =
@@ -418,6 +426,7 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 			dc_video_set_scale_mode(app_settings.scale_mode);
 			dc_toast_show(dc_video_scale_mode_name(app_settings.scale_mode),
 				      DC_TOAST_DURATION_MS);
+			dc_settings_save(&app_settings);
 		}
 		if (input.pause_requested) {
 			paused = true;
@@ -465,11 +474,16 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 
 		fast_mode_timer = fast_mode;
 		dc_video_present(&priv);
-		if (app_settings.status_bar) {
+		if (app_settings.status_bar || dc_toast_active()) {
 			char status_line[64];
+			const char *status = NULL;
 
-			dc_build_status_bar_text(rom_title, status_line, sizeof(status_line));
-			dc_video_present_status_bar(status_line);
+			if (app_settings.status_bar) {
+				dc_build_status_bar_text(rom_title, status_line,
+							 sizeof(status_line));
+				status = status_line;
+			}
+			dc_video_present_overlays(status);
 		}
 
 		if (save_timer > 0 && priv.save_size > 0 && --save_timer <= 0) {
@@ -505,6 +519,7 @@ int main(int argc, char **argv)
 	bool show_start_menu = true;
 
 	dc_settings_load(&app_settings);
+	dc_menu_set_settings_apply_callback(dc_on_settings_changed);
 	dc_apply_av_settings();
 	vid_clear(0, 0, 0);
 

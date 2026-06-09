@@ -135,7 +135,7 @@ static void dc_cover_rom_stem(const char *rom_path, char *stem, size_t stem_len)
 void dc_cover_path_for_rom(const char *rom_path, const char *covers_root,
 			   char *cover_path, size_t cover_path_len)
 {
-	char stem[160];
+	char stem[256];
 
 	if (!rom_path || !covers_root || !cover_path || cover_path_len == 0)
 		return;
@@ -147,8 +147,8 @@ void dc_cover_path_for_rom(const char *rom_path, const char *covers_root,
 bool dc_cover_load_for_rom(const char *rom_path, const char *covers_root, bool is_cgb,
 			   uint16_t pixels[DC_COVER_HEIGHT][DC_COVER_WIDTH])
 {
-	char stem[160];
-	char path[320];
+	char stem[256];
+	char path[512];
 
 	if (!rom_path || !covers_root || !pixels)
 		return false;

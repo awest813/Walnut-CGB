@@ -31,7 +31,6 @@ enum dc_scale_mode dc_video_get_scale_mode(void);
 const char *dc_video_scale_mode_name(enum dc_scale_mode mode);
 void dc_video_present(const struct dc_priv *priv);
 void dc_video_present_screen(const uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH]);
-void dc_video_present_toast_overlay(void);
-void dc_video_present_status_bar(const char *text);
+void dc_video_present_overlays(const char *status_text);
 
 #endif /* DC_VIDEO_H */

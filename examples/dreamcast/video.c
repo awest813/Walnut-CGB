@@ -231,72 +231,76 @@ void dc_video_present(const struct dc_priv *priv)
 
 	pvr_list_finish();
 	pvr_scene_finish();
-
-	dc_video_present_toast_overlay();
 }
 
-void dc_video_present_toast_overlay(void)
+void dc_video_present_overlays(const char *status_text)
 {
-	uint16_t strip[28][DC_SCREEN_WIDTH];
-	const int bar_y = 452;
-	const int bar_h = 28;
+	const int status_h = 20;
+	const int toast_h = 28;
+	const int toast_y = 452;
+	const bool has_status = status_text && status_text[0] != '\0';
+	const bool has_toast = dc_toast_active();
 	const float u1 = (float)DC_SCREEN_WIDTH / (float)DC_UI_TEX_WIDTH;
-	const float v1 = (float)bar_h / (float)DC_UI_TEX_HEIGHT;
+	const int tex_rows = (has_status ? status_h : 0) + (has_toast ? toast_h : 0);
 	unsigned int y;
 
-	if (!dc_toast_active())
+	if (!has_status && !has_toast)
 		return;
 
-	memset(strip, 0, sizeof(strip));
-	dc_ui_fill_rect((uint16_t (*)[DC_SCREEN_WIDTH])strip, 0, 0, DC_SCREEN_WIDTH,
-			bar_h, DC_UI_COLOR_TOAST_BG);
-	dc_ui_draw_text((uint16_t (*)[DC_SCREEN_WIDTH])strip, 12, 10,
-			dc_toast_message(), DC_UI_COLOR_TOAST_FG, DC_UI_COLOR_TOAST_BG);
+	if (has_status) {
+		uint16_t strip[20][DC_SCREEN_WIDTH];
 
-	for (y = 0; y < (unsigned int)bar_h; y++)
-		memcpy(&ui_upload_buf[y * DC_UI_TEX_WIDTH], strip[y],
-		       DC_SCREEN_WIDTH * sizeof(uint16_t));
+		memset(strip, 0, sizeof(strip));
+		dc_ui_fill_rect((uint16_t (*)[DC_SCREEN_WIDTH])strip, 0, 0,
+				DC_SCREEN_WIDTH, status_h, DC_UI_COLOR_TOAST_BG);
+		dc_ui_draw_text_clipped((uint16_t (*)[DC_SCREEN_WIDTH])strip, 8, 6,
+					DC_SCREEN_WIDTH - 16, status_text,
+					DC_UI_COLOR_TOAST_FG, DC_UI_COLOR_TOAST_BG);
 
-	pvr_txr_load(ui_upload_buf, ui_tex, DC_UI_TEX_WIDTH * bar_h * 2);
+		for (y = 0; y < (unsigned int)status_h; y++)
+			memcpy(&ui_upload_buf[y * DC_UI_TEX_WIDTH], strip[y],
+			       DC_SCREEN_WIDTH * sizeof(uint16_t));
+	}
+
+	if (has_toast) {
+		uint16_t strip[28][DC_SCREEN_WIDTH];
+		const int tex_row = has_status ? status_h : 0;
+
+		memset(strip, 0, sizeof(strip));
+		dc_ui_fill_rect((uint16_t (*)[DC_SCREEN_WIDTH])strip, 0, 0,
+				DC_SCREEN_WIDTH, toast_h, DC_UI_COLOR_TOAST_BG);
+		dc_ui_draw_text((uint16_t (*)[DC_SCREEN_WIDTH])strip, 12, 10,
+				dc_toast_message(), DC_UI_COLOR_TOAST_FG,
+				DC_UI_COLOR_TOAST_BG);
+
+		for (y = 0; y < (unsigned int)toast_h; y++)
+			memcpy(&ui_upload_buf[(tex_row + y) * DC_UI_TEX_WIDTH], strip[y],
+			       DC_SCREEN_WIDTH * sizeof(uint16_t));
+	}
+
+	pvr_txr_load(ui_upload_buf, ui_tex, DC_UI_TEX_WIDTH * tex_rows * 2);
 
 	pvr_wait_ready();
 	pvr_scene_begin();
 	pvr_list_begin(PVR_LIST_OP_POLY);
-	dc_video_draw_sprite_uv(&ui_sprite_hdr, 0, bar_y, DC_SCREEN_WIDTH, bar_h,
-				0.0f, 0.0f, u1, v1);
-	pvr_list_finish();
-	pvr_scene_finish();
-}
 
-void dc_video_present_status_bar(const char *text)
-{
-	uint16_t strip[20][DC_SCREEN_WIDTH];
-	const int bar_y = 0;
-	const int bar_h = 20;
-	const float u1 = (float)DC_SCREEN_WIDTH / (float)DC_UI_TEX_WIDTH;
-	const float v1 = (float)bar_h / (float)DC_UI_TEX_HEIGHT;
-	unsigned int y;
+	if (has_status) {
+		const float v1 = (float)status_h / (float)DC_UI_TEX_HEIGHT;
 
-	if (!text || text[0] == '\0')
-		return;
+		dc_video_draw_sprite_uv(&ui_sprite_hdr, 0, 0, DC_SCREEN_WIDTH, status_h,
+					0.0f, 0.0f, u1, v1);
+	}
 
-	memset(strip, 0, sizeof(strip));
-	dc_ui_fill_rect((uint16_t (*)[DC_SCREEN_WIDTH])strip, 0, 0, DC_SCREEN_WIDTH,
-			bar_h, DC_UI_COLOR_TOAST_BG);
-	dc_ui_draw_text_clipped((uint16_t (*)[DC_SCREEN_WIDTH])strip, 8, 6, DC_SCREEN_WIDTH - 16,
-				text, DC_UI_COLOR_TOAST_FG, DC_UI_COLOR_TOAST_BG);
+	if (has_toast) {
+		const float v0 = (float)(has_status ? status_h : 0) /
+				 (float)DC_UI_TEX_HEIGHT;
+		const float v1 = (float)((has_status ? status_h : 0) + toast_h) /
+				 (float)DC_UI_TEX_HEIGHT;
 
-	for (y = 0; y < (unsigned int)bar_h; y++)
-		memcpy(&ui_upload_buf[y * DC_UI_TEX_WIDTH], strip[y],
-		       DC_SCREEN_WIDTH * sizeof(uint16_t));
+		dc_video_draw_sprite_uv(&ui_sprite_hdr, 0, toast_y, DC_SCREEN_WIDTH, toast_h,
+					0.0f, v0, u1, v1);
+	}
 
-	pvr_txr_load(ui_upload_buf, ui_tex, DC_UI_TEX_WIDTH * bar_h * 2);
-
-	pvr_wait_ready();
-	pvr_scene_begin();
-	pvr_list_begin(PVR_LIST_OP_POLY);
-	dc_video_draw_sprite_uv(&ui_sprite_hdr, 0, bar_y, DC_SCREEN_WIDTH, bar_h,
-				0.0f, 0.0f, u1, v1);
 	pvr_list_finish();
 	pvr_scene_finish();
 }

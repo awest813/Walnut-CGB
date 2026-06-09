@@ -46,6 +46,8 @@ struct dc_menu_list
 	int selected;
 };
 
+static dc_settings_apply_cb settings_apply_cb;
+
 static bool dc_menu_repeat(bool pressed, int *timer)
 {
 	if (!pressed) {
@@ -152,16 +154,19 @@ static int dc_menu_run_list(struct dc_menu_list *menu, const char *footer)
 {
 	uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH];
 	bool dirty = true;
+	bool toast_visible = false;
 
 	while (1) {
 		const uint64_t frame_start = timer_ms_gettime64();
 		struct dc_menu_input input;
+		const bool toast_active = dc_toast_active();
 		uint64_t elapsed;
 
-		if (dirty || dc_toast_active()) {
+		if (dirty || toast_active || toast_visible) {
 			dc_menu_draw_list(menu, screen, footer);
 			dc_video_present_screen(screen);
 			dirty = false;
+			toast_visible = toast_active;
 		}
 
 		dc_menu_poll_input(&input);
@@ -357,6 +362,11 @@ enum dc_pause_menu_action dc_pause_menu_run(const char *rom_title, bool has_save
 	}
 }
 
+void dc_menu_set_settings_apply_callback(dc_settings_apply_cb callback)
+{
+	settings_apply_cb = callback;
+}
+
 void dc_controls_menu_run(void)
 {
 	static const char *lines[] = {
@@ -370,6 +380,10 @@ void dc_controls_menu_run(void)
 		"Start+L = Cycle scale mode",
 		"Y = Cycle palette",
 		"L/R = Fast-forward (2x)",
+		"",
+		"Settings (main or pause menu)",
+		"Video output, scale, status bar, audio",
+		"Changes apply immediately",
 		"",
 		"ROM Library",
 		"A = Load  B = Next device  Y = Grid/List",
@@ -394,7 +408,8 @@ void dc_controls_menu_run(void)
 
 			if (lines[i][0] == '\0')
 				continue;
-			if (i == 0 || i == 10)
+			if (lines[i][0] != '\0' && strchr(lines[i], '=') == NULL &&
+			    (i == 0 || lines[i - 1][0] == '\0'))
 				color = DC_UI_COLOR_TITLE;
 
 			dc_ui_draw_text(screen, 24, y, lines[i], color, DC_UI_COLOR_BG);
@@ -501,7 +516,7 @@ static void dc_settings_draw_value_screen(const struct dc_settings *settings,
 	}
 
 	dc_ui_draw_text(screen, 12, 452,
-			"Up/Dn:Row  L/R:Change  A:Mute  A/B:Back",
+			"Up/Dn:Row  L/R:Change  A:Mute(vol)  B:Back",
 			DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
 	dc_toast_draw(screen);
 }
@@ -623,12 +638,16 @@ static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_r
 			break;
 		}
 		changed_value = true;
+		if (settings_apply_cb)
+			settings_apply_cb(settings);
 	}
 
 	if ((buttons & CONT_A) && (changed & CONT_A) && *selected_row == 7) {
 		settings->muted = !settings->muted;
 		dc_toast_show(settings->muted ? "Audio muted" : "Audio unmuted", 1000);
 		changed_value = true;
+		if (settings_apply_cb)
+			settings_apply_cb(settings);
 	}
 
 	if (((buttons & CONT_B) && (changed & CONT_B)) ||
@@ -650,6 +669,7 @@ bool dc_settings_menu_run(struct dc_settings *settings)
 	uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH];
 	int selected_row = 0;
 	bool dirty = true;
+	bool toast_visible = false;
 
 	if (!settings)
 		return false;
@@ -658,12 +678,14 @@ bool dc_settings_menu_run(struct dc_settings *settings)
 		const uint64_t frame_start = timer_ms_gettime64();
 		bool done = false;
 		bool changed;
+		const bool toast_active = dc_toast_active();
 		uint64_t elapsed;
 
-		if (dirty || dc_toast_active()) {
+		if (dirty || toast_active || toast_visible) {
 			dc_settings_draw_value_screen(settings, selected_row, screen);
 			dc_video_present_screen(screen);
 			dirty = false;
+			toast_visible = toast_active;
 		}
 
 		changed = dc_settings_poll_input(settings, &selected_row, &done);
