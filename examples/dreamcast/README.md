@@ -39,7 +39,7 @@ Scans these paths (press **B** to cycle devices):
 | `/ide/roms`, `/ide` | IDE/GDEMU/ODE |
 | `/pc` | dcload transfer target |
 
-Browser controls:
+Browser controls (D-pad or analog stick; hold to repeat):
 
 | Button | Action |
 |--------|--------|
