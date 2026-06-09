@@ -24,13 +24,17 @@ This produces `walnut-dc.elf`.
 
 ## Run
 
-### ROM browser (no arguments)
+### Main menu (no arguments)
 
 ```bash
 dc-tool -x walnut-dc.elf
 ```
 
-Scans these paths (press **B** to cycle devices):
+Shows a start screen, then the main menu with **ROM Library**, **Settings**, and **Exit**.
+
+### ROM library
+
+From the main menu, choose **ROM Library**. Scans these paths (press **B** to cycle devices):
 
 | Path | Typical source |
 |------|----------------|
@@ -48,7 +52,7 @@ Browser controls (D-pad or analog stick; hold to repeat):
 | A | Load selected ROM |
 | B | Next device/path |
 | Start | Refresh list |
-| X | Exit browser |
+| X | Back to main menu |
 
 ### Direct ROM load (dcload)
 
@@ -78,11 +82,23 @@ Load `walnut-dc.elf` with a ROM path argument if your loader supports argv, or u
 
 | Extra | Action |
 |-------|--------|
+| Start + Y | Pause menu (save/load/settings) |
 | Start + A | Reset game |
-| Start + B | Return to browser (browser mode) or exit (direct load) |
+| Start + B | Return to main menu (menu mode) or exit (direct load) |
 | Y | Cycle palette |
 | Start + X | Toggle frameskip |
 | L / R trigger | Fast-forward (2×) |
+
+## Settings
+
+Accessible from the main menu or pause menu. Options are saved to `walnut-dc.cfg` on the first writable path (`/pc`, `/sd`, `/ide`, or `/cd`):
+
+| Setting | Description |
+|---------|-------------|
+| Palette index | DMG colour palette (0–12) |
+| Frameskip | Skip LCD updates for speed |
+| Autosave | Periodic battery-RAM save during play |
+| Autosave interval | Seconds between autosaves (10–300) |
 
 ## Boot Disc (CDI/GDI)
 

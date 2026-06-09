@@ -25,8 +25,10 @@ examples/dreamcast/
 ├── video.c / video.h          # PVR texture upload and present
 ├── audio.c / audio.h          # snd_stream + MiniGB APU bridge
 ├── input.c / input.h          # Maple controller → joypad
-├── rom_browser.c / rom_browser.h  # ROM/save file I/O and browser UI
-├── ui.c / ui.h                # 640x480 text UI for browser
+├── rom_browser.c / rom_browser.h  # ROM/save file I/O and ROM library UI
+├── menu.c / menu.h            # Start, main, pause, and settings menus
+├── settings.c / settings.h    # Persistent configuration
+├── ui.c / ui.h                # 640x480 text UI for menus and browser
 ├── font8x8.h                  # Embedded ASCII font
 ├── meta/ip.txt                # IP.BIN template for disc builds
 ├── scripts/build-disc.sh      # ISO/CDI packaging helper
@@ -110,7 +112,10 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 - [x] Boot disc metadata (`IP.BIN` template, `scripts/build-disc.sh`)
 - [x] Palette cycling (Y button) and fast-forward (triggers)
 - [x] Frameskip toggle (Start + X)
-- [x] Start+B returns to browser when launched without ROM argument
+- [x] Start+B returns to main menu when launched without ROM argument
+- [x] Start screen and main menu (ROM Library, Settings, Exit)
+- [x] Pause menu with manual save/load (Start + Y)
+- [x] Persistent settings (`walnut-dc.cfg`)
 - [ ] Burn test: self-bootable CDI/GDI on hardware
 
 **Deliverable:** Self-contained CDI/GDI image without PC assistance.
@@ -141,7 +146,8 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 | Extra | Action |
 |-------|--------|
 | Start + A | Reset game |
-| Start + B | Exit (return to browser in Phase 3) |
+| Start + Y | Pause menu |
+| Start + B | Exit to main menu (menu mode) |
 | Start + X | Toggle frameskip |
 | Y | Cycle palette |
 | L / R trigger | Fast-forward toggle |

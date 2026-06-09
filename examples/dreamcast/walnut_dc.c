@@ -31,17 +31,32 @@ void audio_write(uint16_t addr, uint8_t val);
 #include "audio.h"
 #include "dc_priv.h"
 #include "input.h"
+#include "menu.h"
 #include "palette.h"
 #include "rom_browser.h"
+#include "settings.h"
 #include "video.h"
 
 KOS_INIT_FLAGS(INIT_DEFAULT | INIT_MALLOCSTATS);
 
-/* Autosave cadence: roughly every 60 seconds of presented frames. */
-#define DC_AUTOSAVE_INTERVAL_FRAMES ((int)(VERTICAL_SYNC * 60.0))
-
 static struct dc_priv priv;
+static struct dc_settings app_settings;
 static unsigned int palette_selection = 3;
+
+static int dc_autosave_interval_frames(void)
+{
+	if (!app_settings.autosave_enabled)
+		return 0;
+
+	return (int)(VERTICAL_SYNC * (double)app_settings.autosave_interval_sec);
+}
+
+static void dc_apply_settings_to_game(struct gb_s *gb, struct dc_priv *p)
+{
+	gb->direct.frame_skip = app_settings.frameskip;
+	palette_selection = app_settings.palette_index;
+	dc_manual_assign_palette(p, (uint8_t)palette_selection);
+}
 
 uint8_t gb_rom_read(struct gb_s *gb, const uint_fast32_t addr)
 {
@@ -238,6 +253,7 @@ static int dc_init_emulator(struct gb_s *gb, struct dc_priv *p)
 
 	gb_init_lcd(gb, &lcd_draw_line);
 	dc_auto_assign_palette(p, gb_colour_hash(gb));
+	dc_manual_assign_palette(p, (uint8_t)palette_selection);
 	return 0;
 }
 
@@ -247,28 +263,72 @@ static void dc_write_save(struct dc_priv *p)
 		dc_cart_ram_write_file(p->save_path, p->cart_ram, p->save_size);
 }
 
-static bool dc_run_game(const char *rom_path, const char *save_path,
-			bool return_to_browser)
+/*
+ * Pause menu result: 1 = resume, 0 = return to main menu, -1 = exit app.
+ */
+static int dc_handle_pause_menu(struct gb_s *gb, bool menu_mode)
+{
+	char rom_title[17];
+	enum dc_pause_menu_action action;
+	const bool has_save = priv.save_size > 0;
+
+	gb_get_rom_name(gb, rom_title);
+	rom_title[sizeof(rom_title) - 1] = '\0';
+
+	while (1) {
+		action = dc_pause_menu_run(rom_title, has_save);
+
+		switch (action) {
+		case DC_PAUSE_MENU_RESUME:
+			return 1;
+		case DC_PAUSE_MENU_SAVE:
+			dc_write_save(&priv);
+			break;
+		case DC_PAUSE_MENU_LOAD:
+			if (has_save)
+				dc_cart_ram_reload_file(priv.save_path, priv.cart_ram,
+							priv.save_size);
+			break;
+		case DC_PAUSE_MENU_SETTINGS:
+			dc_settings_menu_run(&app_settings);
+			dc_apply_settings_to_game(gb, &priv);
+			break;
+		case DC_PAUSE_MENU_MAIN_MENU:
+		case DC_PAUSE_MENU_EXIT:
+			dc_write_save(&priv);
+			return menu_mode ? 0 : -1;
+		default:
+			return 1;
+		}
+	}
+}
+
+static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_mode)
 {
 	struct gb_s gb;
 	struct dc_input_state input;
 	unsigned int fast_mode = 1;
 	unsigned int fast_mode_timer = 1;
-	int save_timer = DC_AUTOSAVE_INTERVAL_FRAMES;
+	int save_timer;
 	uint64_t target_ticks;
 	bool running = true;
+	bool paused = false;
+	bool return_to_main_menu = false;
 
 	memset(&priv, 0, sizeof(priv));
 	if (dc_rom_load(&priv, rom_path) != 0)
-		return return_to_browser;
+		return menu_mode;
 
 	if (save_path && save_path[0] != '\0')
 		strncpy(priv.save_path, save_path, sizeof(priv.save_path) - 1);
 
 	if (dc_init_emulator(&gb, &priv) != 0) {
 		dc_rom_unload(&priv);
-		return return_to_browser;
+		return menu_mode;
 	}
+
+	dc_apply_settings_to_game(&gb, &priv);
+	save_timer = dc_autosave_interval_frames();
 
 	{
 		char title[28] = "Walnut-DC: ";
@@ -289,12 +349,37 @@ static bool dc_run_game(const char *rom_path, const char *save_path,
 		if (input.cycle_palette) {
 			palette_selection++;
 			dc_manual_assign_palette(&priv, (uint8_t)palette_selection);
+			app_settings.palette_index = (uint8_t)palette_selection;
 		}
-		if (input.toggle_frameskip)
+		if (input.toggle_frameskip) {
 			gb.direct.frame_skip = !gb.direct.frame_skip;
+			app_settings.frameskip = gb.direct.frame_skip;
+		}
+		if (input.pause_requested) {
+			paused = true;
+			gb.direct.joypad = 0xFF;
+		}
 		if (input.exit_requested) {
 			running = false;
 			break;
+		}
+
+		if (paused) {
+			const int pause_result = dc_handle_pause_menu(&gb, menu_mode);
+
+			if (pause_result < 0) {
+				running = false;
+				break;
+			}
+			if (pause_result == 0) {
+				return_to_main_menu = true;
+				running = false;
+				break;
+			}
+
+			paused = false;
+			save_timer = dc_autosave_interval_frames();
+			continue;
 		}
 
 		fast_mode = input.fast_mode;
@@ -313,9 +398,9 @@ static bool dc_run_game(const char *rom_path, const char *save_path,
 		fast_mode_timer = fast_mode;
 		dc_video_present(&priv);
 
-		if (priv.save_size > 0 && --save_timer <= 0) {
+		if (save_timer > 0 && priv.save_size > 0 && --save_timer <= 0) {
 			dc_write_save(&priv);
-			save_timer = DC_AUTOSAVE_INTERVAL_FRAMES;
+			save_timer = dc_autosave_interval_frames();
 		}
 
 		{
@@ -329,7 +414,10 @@ static bool dc_run_game(const char *rom_path, const char *save_path,
 	dc_write_save(&priv);
 	dc_rom_unload(&priv);
 
-	if (return_to_browser && input.exit_requested)
+	if (return_to_main_menu)
+		return true;
+
+	if (menu_mode && input.exit_requested)
 		return true;
 
 	return !input.exit_requested;
@@ -339,6 +427,7 @@ int main(int argc, char **argv)
 {
 	struct dc_browser browser;
 	char selected_rom[256];
+	bool show_start_menu = true;
 
 	vid_set_mode(DM_640x480, PM_RGB555);
 	vid_clear(0, 0, 0);
@@ -354,6 +443,8 @@ int main(int argc, char **argv)
 #endif
 
 	dc_input_init();
+	dc_settings_load(&app_settings);
+	palette_selection = app_settings.palette_index;
 	dc_browser_init(&browser);
 
 	if (argc >= 2) {
@@ -363,12 +454,34 @@ int main(int argc, char **argv)
 			goto shutdown;
 	} else {
 		while (1) {
-			if (!dc_browser_run(&browser, selected_rom, sizeof(selected_rom)))
+			enum dc_main_menu_action action;
+
+			if (show_start_menu) {
+				dc_start_menu_run();
+				show_start_menu = false;
+			}
+
+			action = dc_main_menu_run();
+			if (action == DC_MAIN_MENU_EXIT)
 				break;
-			if (!dc_run_game(selected_rom, NULL, true))
-				break;
+
+			if (action == DC_MAIN_MENU_SETTINGS) {
+				dc_settings_menu_run(&app_settings);
+				palette_selection = app_settings.palette_index;
+				continue;
+			}
+
+			while (action == DC_MAIN_MENU_ROM_LIBRARY) {
+				if (!dc_browser_run(&browser, selected_rom,
+						    sizeof(selected_rom)))
+					break;
+				if (!dc_run_game(selected_rom, NULL, true))
+					goto shutdown;
+			}
 		}
 	}
+
+	dc_settings_save(&app_settings);
 
 shutdown:
 	dc_video_shutdown();

@@ -16,6 +16,7 @@ struct dc_input_state
 	uint8_t joypad;
 	bool reset_game;
 	bool exit_requested;
+	bool pause_requested;
 	bool cycle_palette;
 	bool toggle_frameskip;
 	unsigned int fast_mode;

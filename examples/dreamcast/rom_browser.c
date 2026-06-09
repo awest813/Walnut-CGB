@@ -119,10 +119,10 @@ static void dc_browser_draw(const struct dc_browser *browser,
 
 	dc_ui_clear(screen, DC_COLOR_BG);
 	dc_ui_fill_rect(screen, 0, 0, DC_SCREEN_WIDTH, 28, DC_COLOR_HEADER);
-	snprintf(line, sizeof(line), "Walnut-DC  %s", browser->root_path);
+	snprintf(line, sizeof(line), "ROM Library  %s", browser->root_path);
 	dc_ui_draw_text(screen, 12, 10, line, DC_COLOR_BG, DC_COLOR_HEADER);
 	dc_ui_draw_text(screen, 12, 40,
-			"Up/Dn:Move  L/R:Page  A:Load  B:Device  Start:Refresh  X:Exit",
+			"Up/Dn:Move  L/R:Page  A:Load  B:Device  Start:Refresh  X:Back",
 			DC_COLOR_DIM, DC_COLOR_BG);
 
 	if (browser->count == 0) {
@@ -463,6 +463,26 @@ int dc_cart_ram_read_file(const char *save_path, uint8_t **dest, size_t len)
 
 	if (fread(*dest, 1, len, f) != len)
 		memset(*dest, 0, len);
+
+	fclose(f);
+	return 0;
+}
+
+int dc_cart_ram_reload_file(const char *save_path, uint8_t *dest, size_t len)
+{
+	FILE *f;
+
+	if (!save_path || !dest || len == 0)
+		return -1;
+
+	f = fopen(save_path, "rb");
+	if (!f)
+		return -1;
+
+	if (fread(dest, 1, len, f) != len) {
+		fclose(f);
+		return -1;
+	}
 
 	fclose(f);
 	return 0;
