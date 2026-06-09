@@ -89,6 +89,7 @@ Load `walnut-dc.elf` with a ROM path argument if your loader supports argv, or u
 | Start + B | Return to main menu (menu mode) or exit (direct load) |
 | Y | Cycle palette |
 | Start + X | Toggle frameskip |
+| Start + L | Cycle scale mode |
 | L / R trigger | Fast-forward (2×) |
 
 ## Settings
@@ -98,9 +99,13 @@ Accessible from the main menu or pause menu. Options are saved to `walnut-dc.cfg
 | Setting | Description |
 |---------|-------------|
 | Palette | DMG colour palette (named presets) |
+| Scale mode | 3× integer, widescreen, 4× integer, or full screen |
+| Status bar | In-game HUD with title, scale, and volume |
 | Frameskip | Skip LCD updates for speed |
 | Autosave | Periodic battery-RAM save during play |
 | Autosave interval | Seconds between autosaves (10–300) |
+| Volume | Master audio level (0–100%); press A on this row to mute |
+| Audio buffer | Low latency, normal, or stable buffering |
 
 ## Boot Disc (CDI/GDI)
 
@@ -133,6 +138,9 @@ Phase 3 (ROM browser + disc packaging) is implemented. Phase 4 hardware validati
 - **Save/load confirmations** in the pause menu
 - **Loading screen** when starting a ROM from the browser
 - **Save indicators** in the ROM library
+- **Scale modes** including widescreen (640×432) and full-screen stretch
+- **Status bar** HUD during gameplay
+- **Audio controls** for volume, mute, and buffer size
 
 ## Licensing
 

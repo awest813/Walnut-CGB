@@ -11,6 +11,12 @@
 #include "palette.h"
 #include "settings.h"
 
+static const char *const dc_audio_buffer_names[DC_AUDIO_BUFFER_COUNT] = {
+	"Low latency",
+	"Normal",
+	"Stable"
+};
+
 static const char *dc_settings_paths[] = {
 	"/pc/walnut-dc.cfg",
 	"/sd/walnut-dc.cfg",
@@ -22,9 +28,22 @@ static const char *dc_settings_paths[] = {
 void dc_settings_init_defaults(struct dc_settings *settings)
 {
 	settings->palette_index = 3;
+	settings->scale_mode = DC_SCALE_3X;
+	settings->status_bar = true;
 	settings->frameskip = false;
 	settings->autosave_enabled = true;
 	settings->autosave_interval_sec = DC_SETTINGS_AUTOSAVE_DEFAULT_SEC;
+	settings->volume = DC_SETTINGS_VOLUME_DEFAULT;
+	settings->muted = false;
+	settings->audio_buffer = DC_AUDIO_BUFFER_NORMAL;
+}
+
+const char *dc_audio_buffer_name(enum dc_audio_buffer_mode mode)
+{
+	if (mode >= DC_AUDIO_BUFFER_COUNT)
+		return dc_audio_buffer_names[DC_AUDIO_BUFFER_NORMAL];
+
+	return dc_audio_buffer_names[mode];
 }
 
 static void dc_settings_clamp(struct dc_settings *settings)
@@ -32,10 +51,19 @@ static void dc_settings_clamp(struct dc_settings *settings)
 	if (settings->palette_index >= DC_PALETTE_COUNT)
 		settings->palette_index = 3;
 
+	if (settings->scale_mode >= DC_SCALE_COUNT)
+		settings->scale_mode = DC_SCALE_3X;
+
 	if (settings->autosave_interval_sec < DC_SETTINGS_AUTOSAVE_MIN_SEC)
 		settings->autosave_interval_sec = DC_SETTINGS_AUTOSAVE_MIN_SEC;
 	if (settings->autosave_interval_sec > DC_SETTINGS_AUTOSAVE_MAX_SEC)
 		settings->autosave_interval_sec = DC_SETTINGS_AUTOSAVE_MAX_SEC;
+
+	if (settings->volume > DC_SETTINGS_VOLUME_MAX)
+		settings->volume = DC_SETTINGS_VOLUME_DEFAULT;
+
+	if (settings->audio_buffer >= DC_AUDIO_BUFFER_COUNT)
+		settings->audio_buffer = DC_AUDIO_BUFFER_NORMAL;
 }
 
 static int dc_settings_parse_line(struct dc_settings *settings, const char *line)
@@ -45,6 +73,18 @@ static int dc_settings_parse_line(struct dc_settings *settings, const char *line
 	if (sscanf(line, " palette_index = %d", &value) == 1 ||
 	    sscanf(line, "palette_index=%d", &value) == 1) {
 		settings->palette_index = (uint8_t)value;
+		return 0;
+	}
+
+	if (sscanf(line, " scale_mode = %d", &value) == 1 ||
+	    sscanf(line, "scale_mode=%d", &value) == 1) {
+		settings->scale_mode = (enum dc_scale_mode)value;
+		return 0;
+	}
+
+	if (sscanf(line, " status_bar = %d", &value) == 1 ||
+	    sscanf(line, "status_bar=%d", &value) == 1) {
+		settings->status_bar = value != 0;
 		return 0;
 	}
 
@@ -63,6 +103,24 @@ static int dc_settings_parse_line(struct dc_settings *settings, const char *line
 	if (sscanf(line, " autosave_interval_sec = %d", &value) == 1 ||
 	    sscanf(line, "autosave_interval_sec=%d", &value) == 1) {
 		settings->autosave_interval_sec = value;
+		return 0;
+	}
+
+	if (sscanf(line, " volume = %d", &value) == 1 ||
+	    sscanf(line, "volume=%d", &value) == 1) {
+		settings->volume = (uint8_t)value;
+		return 0;
+	}
+
+	if (sscanf(line, " muted = %d", &value) == 1 ||
+	    sscanf(line, "muted=%d", &value) == 1) {
+		settings->muted = value != 0;
+		return 0;
+	}
+
+	if (sscanf(line, " audio_buffer = %d", &value) == 1 ||
+	    sscanf(line, "audio_buffer=%d", &value) == 1) {
+		settings->audio_buffer = (enum dc_audio_buffer_mode)value;
 		return 0;
 	}
 
@@ -103,9 +161,14 @@ int dc_settings_save(const struct dc_settings *settings)
 			continue;
 
 		fprintf(f, "palette_index=%u\n", settings->palette_index);
+		fprintf(f, "scale_mode=%d\n", (int)settings->scale_mode);
+		fprintf(f, "status_bar=%d\n", settings->status_bar ? 1 : 0);
 		fprintf(f, "frameskip=%d\n", settings->frameskip ? 1 : 0);
 		fprintf(f, "autosave_enabled=%d\n", settings->autosave_enabled ? 1 : 0);
 		fprintf(f, "autosave_interval_sec=%d\n", settings->autosave_interval_sec);
+		fprintf(f, "volume=%u\n", settings->volume);
+		fprintf(f, "muted=%d\n", settings->muted ? 1 : 0);
+		fprintf(f, "audio_buffer=%d\n", (int)settings->audio_buffer);
 		fclose(f);
 		return 0;
 	}

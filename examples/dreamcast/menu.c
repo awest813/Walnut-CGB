@@ -17,6 +17,9 @@
 #include "ui.h"
 #include "video.h"
 
+#define DC_SETTINGS_LINE_HEIGHT 24
+#define DC_SETTINGS_LIST_TOP    72
+
 #define DC_MENU_LINE_HEIGHT    28
 #define DC_MENU_LIST_TOP       120
 #define DC_MENU_REPEAT_DELAY   18
@@ -363,6 +366,7 @@ void dc_controls_menu_run(void)
 		"Start+A = Reset game",
 		"Start+B = Main menu / exit",
 		"Start+X = Toggle frameskip",
+		"Start+L = Cycle scale mode",
 		"Y = Cycle palette",
 		"L/R = Fast-forward (2x)",
 		"",
@@ -408,70 +412,90 @@ void dc_controls_menu_run(void)
 	}
 }
 
+static void dc_settings_format_row(const struct dc_settings *settings, int row,
+				   char *line, size_t line_len, bool selected)
+{
+	const char *labels[DC_SETTINGS_ROW_COUNT] = {
+		"Palette",
+		"Scale mode",
+		"Status bar",
+		"Frameskip",
+		"Autosave",
+		"Autosave interval",
+		"Volume",
+		"Audio buffer"
+	};
+	const char marker = selected ? '>' : ' ';
+
+	switch (row) {
+	case 0:
+		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
+			 dc_palette_name(settings->palette_index));
+		break;
+	case 1:
+		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
+			 dc_video_scale_mode_name(settings->scale_mode));
+		break;
+	case 2:
+		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
+			 settings->status_bar ? "On" : "Off");
+		break;
+	case 3:
+		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
+			 settings->frameskip ? "On" : "Off");
+		break;
+	case 4:
+		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
+			 settings->autosave_enabled ? "On" : "Off");
+		break;
+	case 5:
+		snprintf(line, line_len, "%c %s: %d sec", marker, labels[row],
+			 settings->autosave_interval_sec);
+		break;
+	case 6:
+		snprintf(line, line_len, "%c %s: %s%u%%", marker, labels[row],
+			 settings->muted ? "Mute " : "",
+			 settings->muted ? 0U : settings->volume);
+		break;
+	default:
+		snprintf(line, line_len, "%c %s: %s", marker, labels[row],
+			 dc_audio_buffer_name(settings->audio_buffer));
+		break;
+	}
+}
+
 static void dc_settings_draw_value_screen(const struct dc_settings *settings,
 					    int selected_row,
 					    uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH])
 {
 	char line[80];
+	int row;
 
 	dc_ui_clear(screen, DC_UI_COLOR_BG);
 	dc_ui_fill_rect(screen, 0, 0, DC_SCREEN_WIDTH, 36, DC_UI_COLOR_HEADER);
 	dc_ui_draw_text(screen, 12, 12, "Settings", DC_UI_COLOR_BG, DC_UI_COLOR_HEADER);
-	dc_ui_draw_text(screen, 12, 48, "Changes save automatically when you leave.",
+	dc_ui_draw_text(screen, 12, 48, "Video, status bar, and audio options.",
 			DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
 
-	{
-		const char *labels[] = {
-			"Palette",
-			"Frameskip",
-			"Autosave",
-			"Autosave interval"
-		};
-		int row;
+	for (row = 0; row < DC_SETTINGS_ROW_COUNT; row++) {
+		const int y = DC_SETTINGS_LIST_TOP + row * DC_SETTINGS_LINE_HEIGHT;
+		uint16_t fg = row == selected_row ? DC_UI_COLOR_FG : DC_UI_COLOR_DIM;
+		uint16_t bg = DC_UI_COLOR_BG;
 
-		for (row = 0; row < 4; row++) {
-			const int y = DC_MENU_LIST_TOP + row * DC_MENU_LINE_HEIGHT;
-			uint16_t fg = row == selected_row ? DC_UI_COLOR_FG : DC_UI_COLOR_DIM;
-			uint16_t bg = DC_UI_COLOR_BG;
-
-			if (row == selected_row) {
-				dc_ui_fill_rect(screen, 24, y - 2, DC_SCREEN_WIDTH - 48,
-						DC_MENU_LINE_HEIGHT, DC_UI_COLOR_SELECT);
-				bg = DC_UI_COLOR_SELECT;
-				fg = DC_UI_COLOR_FG;
-			}
-
-			switch (row) {
-			case 0:
-				snprintf(line, sizeof(line), "%c %s: %s",
-					 row == selected_row ? '>' : ' ',
-					 labels[row],
-					 dc_palette_name(settings->palette_index));
-				break;
-			case 1:
-				snprintf(line, sizeof(line), "%c %s: %s",
-					 row == selected_row ? '>' : ' ',
-					 labels[row], settings->frameskip ? "On" : "Off");
-				break;
-			case 2:
-				snprintf(line, sizeof(line), "%c %s: %s",
-					 row == selected_row ? '>' : ' ',
-					 labels[row],
-					 settings->autosave_enabled ? "On" : "Off");
-				break;
-			default:
-				snprintf(line, sizeof(line), "%c %s: %d sec",
-					 row == selected_row ? '>' : ' ',
-					 labels[row], settings->autosave_interval_sec);
-				break;
-			}
-
-			dc_ui_draw_text(screen, 32, y, line, fg, bg);
+		if (row == selected_row) {
+			dc_ui_fill_rect(screen, 24, y - 2, DC_SCREEN_WIDTH - 48,
+					DC_SETTINGS_LINE_HEIGHT, DC_UI_COLOR_SELECT);
+			bg = DC_UI_COLOR_SELECT;
+			fg = DC_UI_COLOR_FG;
 		}
+
+		dc_settings_format_row(settings, row, line, sizeof(line),
+				       row == selected_row);
+		dc_ui_draw_text_clipped(screen, 32, y, DC_SCREEN_WIDTH - 48, line, fg, bg);
 	}
 
 	dc_ui_draw_text(screen, 12, 452,
-			"Up/Dn:Row  L/R:Change  A/B:Back",
+			"Up/Dn:Row  L/R:Change  A:Mute  A/B:Back",
 			DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
 	dc_toast_draw(screen);
 }
@@ -507,19 +531,20 @@ static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_r
 	if (dc_menu_repeat(up, &t_up)) {
 		(*selected_row)--;
 		if (*selected_row < 0)
-			*selected_row = 3;
+			*selected_row = DC_SETTINGS_ROW_COUNT - 1;
 		changed_value = true;
 	}
 
 	if (dc_menu_repeat(down, &t_down)) {
 		(*selected_row)++;
-		if (*selected_row > 3)
+		if (*selected_row >= DC_SETTINGS_ROW_COUNT)
 			*selected_row = 0;
 		changed_value = true;
 	}
 
 	if (dc_menu_repeat(left, &t_left) || dc_menu_repeat(right, &t_right)) {
 		const int inc = right ? 1 : -1;
+		char toast_line[48];
 
 		switch (*selected_row) {
 		case 0:
@@ -529,19 +554,29 @@ static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_r
 			dc_toast_show(dc_palette_name(settings->palette_index), 1000);
 			break;
 		case 1:
+			settings->scale_mode =
+				(enum dc_scale_mode)((settings->scale_mode + inc + DC_SCALE_COUNT) %
+						     DC_SCALE_COUNT);
+			dc_toast_show(dc_video_scale_mode_name(settings->scale_mode), 1000);
+			break;
+		case 2:
+			settings->status_bar = !settings->status_bar;
+			dc_toast_show(settings->status_bar ? "Status bar on" :
+							       "Status bar off",
+				      1000);
+			break;
+		case 3:
 			settings->frameskip = !settings->frameskip;
 			dc_toast_show(settings->frameskip ? "Frameskip on" : "Frameskip off",
 				      1000);
 			break;
-		case 2:
+		case 4:
 			settings->autosave_enabled = !settings->autosave_enabled;
 			dc_toast_show(settings->autosave_enabled ? "Autosave on" :
 								   "Autosave off",
 				      1000);
 			break;
-		case 3: {
-			char toast_line[32];
-
+		case 5:
 			settings->autosave_interval_sec += inc * 10;
 			if (settings->autosave_interval_sec < DC_SETTINGS_AUTOSAVE_MIN_SEC)
 				settings->autosave_interval_sec = DC_SETTINGS_AUTOSAVE_MIN_SEC;
@@ -551,16 +586,41 @@ static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_r
 				 settings->autosave_interval_sec);
 			dc_toast_show(toast_line, 1000);
 			break;
-		}
+		case 6:
+			if (settings->muted) {
+				settings->muted = false;
+				dc_toast_show("Audio unmuted", 1000);
+				break;
+			}
+			settings->volume = (uint8_t)((int)settings->volume + inc * 10);
+			if ((int)settings->volume < DC_SETTINGS_VOLUME_MIN)
+				settings->volume = DC_SETTINGS_VOLUME_MIN;
+			if ((int)settings->volume > DC_SETTINGS_VOLUME_MAX)
+				settings->volume = DC_SETTINGS_VOLUME_MAX;
+			snprintf(toast_line, sizeof(toast_line), "Volume: %u%%",
+				 settings->volume);
+			dc_toast_show(toast_line, 1000);
+			break;
 		default:
+			settings->audio_buffer =
+				(enum dc_audio_buffer_mode)((settings->audio_buffer + inc +
+							     DC_AUDIO_BUFFER_COUNT) %
+							    DC_AUDIO_BUFFER_COUNT);
+			dc_toast_show(dc_audio_buffer_name(settings->audio_buffer), 1000);
 			break;
 		}
 		changed_value = true;
 	}
 
-	if (((buttons & CONT_A) && (changed & CONT_A)) ||
-	    ((buttons & CONT_B) && (changed & CONT_B)) ||
-	    ((buttons & CONT_X) && (changed & CONT_X)))
+	if ((buttons & CONT_A) && (changed & CONT_A) && *selected_row == 6) {
+		settings->muted = !settings->muted;
+		dc_toast_show(settings->muted ? "Audio muted" : "Audio unmuted", 1000);
+		changed_value = true;
+	}
+
+	if (((buttons & CONT_B) && (changed & CONT_B)) ||
+	    ((buttons & CONT_X) && (changed & CONT_X)) ||
+	    ((buttons & CONT_A) && (changed & CONT_A) && *selected_row != 6))
 		*done = true;
 
 	previous_buttons = buttons;

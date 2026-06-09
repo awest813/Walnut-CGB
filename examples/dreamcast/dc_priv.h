@@ -14,7 +14,6 @@
 
 #define DC_FB_TEX_WIDTH  256
 #define DC_FB_TEX_HEIGHT 256
-#define DC_DISPLAY_SCALE 3
 
 struct dc_priv
 {

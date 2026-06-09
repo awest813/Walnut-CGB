@@ -52,6 +52,7 @@ void dc_input_poll(struct dc_input_state *state, struct gb_s *gb)
 	state->pause_requested = false;
 	state->cycle_palette = false;
 	state->toggle_frameskip = false;
+	state->cycle_scale = false;
 
 	if (!controller)
 		controller = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
@@ -94,6 +95,9 @@ void dc_input_poll(struct dc_input_state *state, struct gb_s *gb)
 		if ((buttons & CONT_START) && (buttons & CONT_X) &&
 		    (changed & CONT_X))
 			state->toggle_frameskip = true;
+		if ((buttons & CONT_START) && (buttons & CONT_LTRIGGER) &&
+		    (changed & CONT_LTRIGGER))
+			state->cycle_scale = true;
 	}
 
 	state->joypad = dc_buttons_to_joypad(buttons);

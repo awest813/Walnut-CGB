@@ -4,6 +4,7 @@
  * Licensed under the MIT License.
  */
 
+#include <limits.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -14,27 +15,73 @@
 #define MINIGB_APU_AUDIO_FORMAT_S16SYS
 #include "../sdl2/minigb_apu/minigb_apu.h"
 
-#define DC_AUDIO_RING_SAMPLES 16384
+#define DC_AUDIO_RING_MAX_SAMPLES 32768
 #define DC_AUDIO_STEREO_FRAME_BYTES (sizeof(int16_t) * AUDIO_CHANNELS)
 
 static struct minigb_apu_ctx apu;
 static snd_stream_hnd_t stream = SND_STREAM_INVALID;
 static bool audio_active;
-static int16_t ring[DC_AUDIO_RING_SAMPLES * 2];
+static int16_t ring[DC_AUDIO_RING_MAX_SAMPLES * 2];
+static unsigned int ring_capacity = 16384;
 static unsigned int ring_read;
 static unsigned int ring_write;
+static uint8_t master_volume = DC_SETTINGS_VOLUME_DEFAULT;
+static bool audio_muted;
 static int16_t stream_buf[4096 * 2] __attribute__((aligned(32)));
+
+static unsigned int dc_audio_ring_capacity_for_mode(enum dc_audio_buffer_mode mode)
+{
+	switch (mode) {
+	case DC_AUDIO_BUFFER_LOW:
+		return 4096;
+	case DC_AUDIO_BUFFER_HIGH:
+		return DC_AUDIO_RING_MAX_SAMPLES;
+	case DC_AUDIO_BUFFER_NORMAL:
+	default:
+		return 16384;
+	}
+}
+
+static void dc_audio_apply_gain(int16_t *samples, unsigned int count)
+{
+	unsigned int i;
+
+	if (audio_muted || master_volume == 0) {
+		memset(samples, 0, count * DC_AUDIO_STEREO_FRAME_BYTES);
+		return;
+	}
+
+	if (master_volume == 100)
+		return;
+
+	for (i = 0; i < count * AUDIO_CHANNELS; i++) {
+		int32_t sample = samples[i];
+
+		sample = (sample * (int32_t)master_volume) / 100;
+		if (sample > INT16_MAX)
+			sample = INT16_MAX;
+		if (sample < INT16_MIN)
+			sample = INT16_MIN;
+		samples[i] = (int16_t)sample;
+	}
+}
 
 static unsigned int dc_audio_ring_used(void)
 {
 	if (ring_write >= ring_read)
 		return ring_write - ring_read;
-	return DC_AUDIO_RING_SAMPLES - ring_read + ring_write;
+	return ring_capacity - ring_read + ring_write;
 }
 
 static unsigned int dc_audio_ring_free(void)
 {
-	return DC_AUDIO_RING_SAMPLES - dc_audio_ring_used() - 1;
+	return ring_capacity - dc_audio_ring_used() - 1;
+}
+
+static void dc_audio_ring_reset(void)
+{
+	ring_read = 0;
+	ring_write = 0;
 }
 
 static void dc_audio_ring_push(const int16_t *samples, unsigned int count)
@@ -44,7 +91,7 @@ static void dc_audio_ring_push(const int16_t *samples, unsigned int count)
 	for (i = 0; i < count; i++) {
 		ring[ring_write * 2] = samples[i * 2];
 		ring[ring_write * 2 + 1] = samples[i * 2 + 1];
-		ring_write = (ring_write + 1) % DC_AUDIO_RING_SAMPLES;
+		ring_write = (ring_write + 1) % ring_capacity;
 	}
 }
 
@@ -56,17 +103,18 @@ static unsigned int dc_audio_ring_pop(int16_t *dst, unsigned int count)
 	for (i = 0; i < count && ring_read != ring_write; i++) {
 		dst[i * 2] = ring[ring_read * 2];
 		dst[i * 2 + 1] = ring[ring_read * 2 + 1];
-		ring_read = (ring_read + 1) % DC_AUDIO_RING_SAMPLES;
+		ring_read = (ring_read + 1) % ring_capacity;
 		popped++;
 	}
 
+	dc_audio_apply_gain(dst, popped);
 	return popped;
 }
 
 static void dc_audio_ring_make_room(unsigned int frames)
 {
 	while (dc_audio_ring_free() < frames && ring_read != ring_write)
-		ring_read = (ring_read + 1) % DC_AUDIO_RING_SAMPLES;
+		ring_read = (ring_read + 1) % ring_capacity;
 }
 
 static void *dc_audio_stream_callback(snd_stream_hnd_t hnd, int smp_req, int *smp_recv)
@@ -84,8 +132,7 @@ static void *dc_audio_stream_callback(snd_stream_hnd_t hnd, int smp_req, int *sm
 
 int dc_audio_init(void)
 {
-	ring_read = 0;
-	ring_write = 0;
+	dc_audio_ring_reset();
 	audio_active = false;
 	minigb_apu_audio_init(&apu);
 
@@ -107,6 +154,24 @@ void dc_audio_shutdown(void)
 		snd_stream_stop(stream);
 		snd_stream_destroy(stream);
 		stream = SND_STREAM_INVALID;
+	}
+}
+
+void dc_audio_configure(uint8_t volume, bool muted,
+			enum dc_audio_buffer_mode buffer_mode)
+{
+	const unsigned int new_capacity =
+		dc_audio_ring_capacity_for_mode(buffer_mode);
+
+	if (volume > DC_SETTINGS_VOLUME_MAX)
+		volume = DC_SETTINGS_VOLUME_MAX;
+
+	master_volume = volume;
+	audio_muted = muted;
+
+	if (new_capacity != ring_capacity) {
+		ring_capacity = new_capacity;
+		dc_audio_ring_reset();
 	}
 }
 
