@@ -1,0 +1,25 @@
+# Cover art fetch/import helpers (no KOS toolchain required).
+#
+#   make -f Makefile.covers fetch-covers
+#   make -f Makefile.covers import-boxart
+#   make -f Makefile.covers fetch-roms ROMS_DIR=disc-build/roms
+
+ROMS_DIR ?=
+
+.PHONY: fetch-covers import-boxart fetch-roms help
+
+help:
+	@echo "Targets:"
+	@echo "  fetch-covers   Incremental HTTP sync of full GB+GBC boxart catalog"
+	@echo "  import-boxart  Sparse-clone xero/boxart and convert (offline-friendly)"
+	@echo "  fetch-roms     Fetch covers for ROMs in ROMS_DIR"
+
+fetch-covers:
+	python3 scripts/fetch-covers.py --sync-all
+
+import-boxart:
+	./scripts/import-boxart.sh
+
+fetch-roms:
+	@test -n "$(ROMS_DIR)" || (echo "Set ROMS_DIR=path/to/roms" >&2; exit 1)
+	python3 scripts/fetch-covers.py --roms-dir "$(ROMS_DIR)"

@@ -126,7 +126,8 @@ Accessible from the main menu or pause menu. Video and audio changes apply immed
 
 3. Copy homebrew `.gb` / `.gbc` ROMs into `disc-build/roms/` before burning.
 4. Box art is bundled automatically from `covers/boxart/` when you run `build-disc.sh`.
-5. Refresh art from upstream: `./scripts/import-boxart.sh`
+5. Refresh art from upstream: `./scripts/import-boxart.sh` or `make -f Makefile.covers fetch-covers`
+6. Fetch covers only for ROMs on the disc: `make -f Makefile.covers fetch-roms ROMS_DIR=disc-build/roms`
 6. Burn `disc-build/walnut-dc.iso` or `disc-build/walnut-dc.cdi`.
 
 Disc metadata is defined in `meta/ip.txt` (processed by KOS `makeip`).

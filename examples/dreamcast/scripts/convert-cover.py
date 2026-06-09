@@ -37,11 +37,24 @@ def convert_image(input_path: Path, output_path: Path) -> None:
                 out.write(struct.pack("<H", rgb888_to_rgb555(r, g, b)))
 
 
-def convert_tree(input_dir: Path, output_dir: Path) -> int:
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
+
+
+def convert_tree(
+    input_dir: Path, output_dir: Path, *, skip_existing: bool = False
+) -> int:
     count = 0
 
-    for source in sorted(input_dir.glob("*.png")):
+    for source in sorted(input_dir.iterdir()):
+        if not source.is_file():
+            continue
+        if source.suffix.lower() not in IMAGE_SUFFIXES:
+            continue
+
         target = output_dir / f"{source.stem}.w555"
+        if skip_existing and target.exists():
+            continue
+
         convert_image(source, target)
         count += 1
 
@@ -62,13 +75,22 @@ def main() -> int:
         metavar="DIR",
         help="Output directory for --batch-dir",
     )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="With --batch-dir, skip covers that already exist",
+    )
     args = parser.parse_args()
 
     if args.batch_dir:
         if not args.output_dir:
             print("error: --batch-dir requires --output-dir", file=sys.stderr)
             return 1
-        count = convert_tree(Path(args.batch_dir), Path(args.output_dir))
+        count = convert_tree(
+            Path(args.batch_dir),
+            Path(args.output_dir),
+            skip_existing=args.skip_existing,
+        )
         print(f"Converted {count} covers into {args.output_dir}")
         return 0
 

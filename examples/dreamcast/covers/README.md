@@ -22,7 +22,27 @@ Refresh from upstream:
 
 ```bash
 pip install pillow
+
+# Full catalog (sparse git clone — fast bulk import)
 ./scripts/import-boxart.sh
+
+# Incremental HTTP sync (no git clone; downloads only missing .w555)
+./scripts/import-boxart.sh --sync-remote
+# or: python3 scripts/fetch-covers.py --sync-all
+```
+
+Fetch covers for ROMs you already have (downloads only matching titles):
+
+```bash
+./scripts/import-boxart.sh --roms-dir disc-build/roms
+# or: python3 scripts/fetch-covers.py --roms-dir /path/to/roms
+```
+
+Makefile shortcuts (no KOS required):
+
+```bash
+make -f Makefile.covers fetch-covers
+make -f Makefile.covers fetch-roms ROMS_DIR=disc-build/roms
 ```
 
 ## Lookup order
