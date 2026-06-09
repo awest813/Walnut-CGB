@@ -19,6 +19,7 @@ struct dc_browser_entry
 {
 	char path[256];
 	char name[48];
+	bool has_save;
 };
 
 struct dc_browser
@@ -52,6 +53,8 @@ int dc_cart_ram_write_file(const char *save_path, const uint8_t *data, size_t le
 
 void dc_browser_init(struct dc_browser *browser);
 int dc_browser_scan(struct dc_browser *browser);
+const char *dc_browser_device_label(const struct dc_browser *browser);
 bool dc_browser_run(struct dc_browser *browser, char *selected_path, size_t selected_len);
+void dc_browser_show_loading(const char *rom_name);
 
 #endif /* DC_ROM_BROWSER_H */

@@ -35,6 +35,7 @@ void audio_write(uint16_t addr, uint8_t val);
 #include "palette.h"
 #include "rom_browser.h"
 #include "settings.h"
+#include "toast.h"
 #include "video.h"
 
 KOS_INIT_FLAGS(INIT_DEFAULT | INIT_MALLOCSTATS);
@@ -283,11 +284,19 @@ static int dc_handle_pause_menu(struct gb_s *gb, bool menu_mode)
 			return 1;
 		case DC_PAUSE_MENU_SAVE:
 			dc_write_save(&priv);
+			dc_menu_show_message("Save Game", "Game saved.", 1200);
 			break;
 		case DC_PAUSE_MENU_LOAD:
-			if (has_save)
-				dc_cart_ram_reload_file(priv.save_path, priv.cart_ram,
-							priv.save_size);
+			if (has_save) {
+				if (dc_cart_ram_reload_file(priv.save_path, priv.cart_ram,
+							    priv.save_size) == 0)
+					dc_menu_show_message("Load Game",
+							     "Save loaded.", 1200);
+				else
+					dc_menu_show_message("Load Game",
+							     "No save file found.",
+							     1500);
+			}
 			break;
 		case DC_PAUSE_MENU_SETTINGS:
 			dc_settings_menu_run(&app_settings);
@@ -303,11 +312,23 @@ static int dc_handle_pause_menu(struct gb_s *gb, bool menu_mode)
 	}
 }
 
+static void dc_show_fast_mode_toast(unsigned int fast_mode)
+{
+	char line[48];
+
+	if (fast_mode <= 1)
+		return;
+
+	snprintf(line, sizeof(line), "Fast-forward %ux", fast_mode);
+	dc_toast_show(line, 800);
+}
+
 static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_mode)
 {
 	struct gb_s gb;
 	struct dc_input_state input;
 	unsigned int fast_mode = 1;
+	unsigned int prev_fast_mode = 1;
 	unsigned int fast_mode_timer = 1;
 	int save_timer;
 	uint64_t target_ticks;
@@ -316,13 +337,16 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 	bool return_to_main_menu = false;
 
 	memset(&priv, 0, sizeof(priv));
-	if (dc_rom_load(&priv, rom_path) != 0)
+	if (dc_rom_load(&priv, rom_path) != 0) {
+		dc_menu_show_message("Load Failed", "Unable to open ROM file.", 1500);
 		return menu_mode;
+	}
 
 	if (save_path && save_path[0] != '\0')
 		strncpy(priv.save_path, save_path, sizeof(priv.save_path) - 1);
 
 	if (dc_init_emulator(&gb, &priv) != 0) {
+		dc_menu_show_message("Load Failed", "Emulator init failed.", 1500);
 		dc_rom_unload(&priv);
 		return menu_mode;
 	}
@@ -347,13 +371,17 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 		if (input.reset_game)
 			gb_reset(&gb);
 		if (input.cycle_palette) {
-			palette_selection++;
+			palette_selection = (palette_selection + 1) % DC_PALETTE_COUNT;
 			dc_manual_assign_palette(&priv, (uint8_t)palette_selection);
 			app_settings.palette_index = (uint8_t)palette_selection;
+			dc_toast_show(dc_palette_name((uint8_t)palette_selection),
+				      DC_TOAST_DURATION_MS);
 		}
 		if (input.toggle_frameskip) {
 			gb.direct.frame_skip = !gb.direct.frame_skip;
 			app_settings.frameskip = gb.direct.frame_skip;
+			dc_toast_show(gb.direct.frame_skip ? "Frameskip on" : "Frameskip off",
+				      DC_TOAST_DURATION_MS);
 		}
 		if (input.pause_requested) {
 			paused = true;
@@ -383,6 +411,10 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 		}
 
 		fast_mode = input.fast_mode;
+		if (fast_mode != prev_fast_mode) {
+			dc_show_fast_mode_toast(fast_mode);
+			prev_fast_mode = fast_mode;
+		}
 		gb_run_frame_dualfetch(&gb);
 
 #if ENABLE_SOUND
@@ -400,6 +432,7 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 
 		if (save_timer > 0 && priv.save_size > 0 && --save_timer <= 0) {
 			dc_write_save(&priv);
+			dc_toast_show("Autosaved", 1200);
 			save_timer = dc_autosave_interval_frames();
 		}
 
@@ -468,6 +501,11 @@ int main(int argc, char **argv)
 			if (action == DC_MAIN_MENU_SETTINGS) {
 				dc_settings_menu_run(&app_settings);
 				palette_selection = app_settings.palette_index;
+				continue;
+			}
+
+			if (action == DC_MAIN_MENU_CONTROLS) {
+				dc_controls_menu_run();
 				continue;
 			}
 

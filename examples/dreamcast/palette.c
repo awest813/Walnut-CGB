@@ -11,7 +11,22 @@
 #include "../../extras/sgb.h"
 #include "palette.h"
 
-#define DC_NUMBER_OF_PALETTES 12
+#define DC_NUMBER_OF_PALETTES DC_PALETTE_COUNT
+
+static const char *const dc_palette_names[DC_PALETTE_COUNT] = {
+	"Classic Green",
+	"Yellow",
+	"Blue",
+	"Inverted",
+	"Grayscale",
+	"Brown",
+	"Mixed Blue",
+	"Kirby",
+	"Pastel",
+	"Vivid",
+	"Sunset",
+	"Neon"
+};
 
 static inline uint16_t rgb888_to_rgb555(uint32_t rgb)
 {
@@ -231,4 +246,9 @@ void dc_manual_assign_palette(struct dc_priv *priv, uint8_t selection)
 		break;
 	}
 	}
+}
+
+const char *dc_palette_name(uint8_t selection)
+{
+	return dc_palette_names[selection % DC_PALETTE_COUNT];
 }

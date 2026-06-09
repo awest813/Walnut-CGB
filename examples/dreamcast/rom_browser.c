@@ -14,32 +14,32 @@
 #include <dc/maple/controller.h>
 
 #include "rom_browser.h"
+#include "toast.h"
 #include "ui.h"
 #include "video.h"
 
 #define DC_BROWSER_LINE_HEIGHT 24
-#define DC_BROWSER_LIST_TOP    72
+#define DC_BROWSER_LIST_TOP    80
 #define DC_REPEAT_DELAY_FRAMES 18
 #define DC_REPEAT_RATE_FRAMES  4
 #define DC_ANALOG_THRESHOLD    64
 #define DC_FRAME_MS            16
-#define DC_COLOR_BG     0x0000
-#define DC_COLOR_FG     0x7FFF
-#define DC_COLOR_DIM    0x39CE
-#define DC_COLOR_SELECT 0x001F
-#define DC_COLOR_HEADER 0x03FF
-#define DC_COLOR_TRACK  0x2108
-#define DC_COLOR_THUMB  0x5294
 
-static const char *dc_browser_roots[] = {
-	"/cd/roms",
-	"/cd",
-	"/sd/roms",
-	"/sd",
-	"/ide/roms",
-	"/ide",
-	"/pc",
-	NULL
+struct dc_browser_root
+{
+	const char *path;
+	const char *label;
+};
+
+static const struct dc_browser_root dc_browser_roots[] = {
+	{ "/cd/roms", "GD-ROM" },
+	{ "/cd",      "GD-ROM (root)" },
+	{ "/sd/roms", "SD Card" },
+	{ "/sd",      "SD Card (root)" },
+	{ "/ide/roms","IDE / GDEMU" },
+	{ "/ide",     "IDE / GDEMU (root)" },
+	{ "/pc",      "PC (dcload)" },
+	{ NULL,       NULL }
 };
 
 static int dc_has_rom_extension(const char *name)
@@ -70,7 +70,16 @@ void dc_browser_init(struct dc_browser *browser)
 {
 	memset(browser, 0, sizeof(*browser));
 	browser->root_index = 0;
-	strncpy(browser->root_path, dc_browser_roots[0], sizeof(browser->root_path) - 1);
+	strncpy(browser->root_path, dc_browser_roots[0].path,
+		sizeof(browser->root_path) - 1);
+}
+
+const char *dc_browser_device_label(const struct dc_browser *browser)
+{
+	if (!browser)
+		return "";
+
+	return dc_browser_roots[browser->root_index].label;
 }
 
 int dc_browser_scan(struct dc_browser *browser)
@@ -96,10 +105,21 @@ int dc_browser_scan(struct dc_browser *browser)
 		if (!dc_has_rom_extension(name))
 			continue;
 
+		char save_path[256];
+
 		snprintf(slot->path, sizeof(slot->path), "%s/%s",
 			 browser->root_path, name);
 		strncpy(slot->name, name, sizeof(slot->name) - 1);
 		slot->name[sizeof(slot->name) - 1] = '\0';
+		slot->has_save = false;
+		if (dc_save_path_from_rom(slot->path, save_path, sizeof(save_path)) == 0) {
+			FILE *save_file = fopen(save_path, "rb");
+
+			if (save_file) {
+				slot->has_save = true;
+				fclose(save_file);
+			}
+		}
 		count++;
 	}
 
@@ -117,42 +137,55 @@ static void dc_browser_draw(const struct dc_browser *browser,
 	int visible = DC_BROWSER_VISIBLE_LINES;
 	int i;
 
-	dc_ui_clear(screen, DC_COLOR_BG);
-	dc_ui_fill_rect(screen, 0, 0, DC_SCREEN_WIDTH, 28, DC_COLOR_HEADER);
-	snprintf(line, sizeof(line), "ROM Library  %s", browser->root_path);
-	dc_ui_draw_text(screen, 12, 10, line, DC_COLOR_BG, DC_COLOR_HEADER);
-	dc_ui_draw_text(screen, 12, 40,
+	dc_ui_clear(screen, DC_UI_COLOR_BG);
+	dc_ui_fill_rect(screen, 0, 0, DC_SCREEN_WIDTH, 28, DC_UI_COLOR_HEADER);
+	snprintf(line, sizeof(line), "ROM Library  %s",
+		 dc_browser_device_label(browser));
+	dc_ui_draw_text(screen, 12, 10, line, DC_UI_COLOR_BG, DC_UI_COLOR_HEADER);
+	snprintf(line, sizeof(line), "%s", browser->root_path);
+	dc_ui_draw_text(screen, 12, 34, line, DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+	dc_ui_draw_text(screen, 12, 52,
 			"Up/Dn:Move  L/R:Page  A:Load  B:Device  Start:Refresh  X:Back",
-			DC_COLOR_DIM, DC_COLOR_BG);
+			DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
 
 	if (browser->count == 0) {
-		dc_ui_draw_text(screen, 12, 80, "No ROM files found.",
-				DC_COLOR_FG, DC_COLOR_BG);
-		dc_ui_draw_text(screen, 12, 104, "Place .gb/.gbc files here or press B.",
-				DC_COLOR_DIM, DC_COLOR_BG);
+		dc_ui_draw_text(screen, 12, 88, "No ROM files found.",
+				DC_UI_COLOR_FG, DC_UI_COLOR_BG);
+		dc_ui_draw_text(screen, 12, 112,
+				"Add .gb/.gbc files, then press Start to refresh.",
+				DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+		dc_ui_draw_text(screen, 12, 136, "Press B to try another storage device.",
+				DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+		dc_toast_draw(screen);
 		return;
 	}
 
 	for (i = 0; i < visible; i++) {
 		const int index = browser->scroll + i;
 		const int y = DC_BROWSER_LIST_TOP + i * DC_BROWSER_LINE_HEIGHT;
-		uint16_t fg = DC_COLOR_FG;
-		uint16_t bg = DC_COLOR_BG;
+		uint16_t fg = DC_UI_COLOR_FG;
+		uint16_t bg = DC_UI_COLOR_BG;
+		const struct dc_browser_entry *entry = &browser->entries[index];
+		const int name_width = browser->entries[index].has_save ?
+				       DC_SCREEN_WIDTH - 88 : DC_SCREEN_WIDTH - 32;
 
 		if (index >= browser->count)
 			break;
 
 		if (index == browser->selected) {
 			dc_ui_fill_rect(screen, 8, y - 2, DC_SCREEN_WIDTH - 16,
-					DC_BROWSER_LINE_HEIGHT, DC_COLOR_SELECT);
-			fg = DC_COLOR_FG;
-			bg = DC_COLOR_SELECT;
+					DC_BROWSER_LINE_HEIGHT, DC_UI_COLOR_SELECT);
+			fg = DC_UI_COLOR_FG;
+			bg = DC_UI_COLOR_SELECT;
 		}
 
-		snprintf(line, sizeof(line), "%c %s",
-			 index == browser->selected ? '>' : ' ',
-			 browser->entries[index].name);
-		dc_ui_draw_text_clipped(screen, 16, y, DC_SCREEN_WIDTH - 32, line, fg, bg);
+		snprintf(line, sizeof(line), "%c ",
+			 index == browser->selected ? '>' : ' ');
+		dc_ui_draw_text(screen, 16, y, line, fg, bg);
+		dc_ui_draw_text_ellipsis(screen, 32, y, name_width, entry->name, fg, bg);
+		if (entry->has_save)
+			dc_ui_draw_text(screen, DC_SCREEN_WIDTH - 72, y, "[SAV]",
+					DC_UI_COLOR_SAVE, bg);
 	}
 
 	if (browser->count > DC_BROWSER_VISIBLE_LINES) {
@@ -167,13 +200,26 @@ static void dc_browser_draw(const struct dc_browser *browser,
 			thumb_h = 12;
 		thumb_y = track_y + (track_h - thumb_h) * browser->scroll / max_scroll;
 
-		dc_ui_fill_rect(screen, track_x, track_y, 4, track_h, DC_COLOR_TRACK);
-		dc_ui_fill_rect(screen, track_x, thumb_y, 4, thumb_h, DC_COLOR_THUMB);
+		dc_ui_fill_rect(screen, track_x, track_y, 4, track_h, DC_UI_COLOR_TRACK);
+		dc_ui_fill_rect(screen, track_x, thumb_y, 4, thumb_h, DC_UI_COLOR_THUMB);
 	}
 
-	snprintf(line, sizeof(line), "ROM %d / %d", browser->selected + 1,
+	snprintf(line, sizeof(line), "%d / %d ROMs", browser->selected + 1,
 		 browser->count);
-	dc_ui_draw_text(screen, 12, 452, line, DC_COLOR_DIM, DC_COLOR_BG);
+	dc_ui_draw_text(screen, 12, 452, line, DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+	dc_toast_draw(screen);
+}
+
+void dc_browser_show_loading(const char *rom_name)
+{
+	uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH];
+	char subtitle[64];
+
+	snprintf(subtitle, sizeof(subtitle), "Loading %s",
+		 rom_name ? rom_name : "ROM");
+	subtitle[sizeof(subtitle) - 1] = '\0';
+	dc_ui_draw_loading(screen, "Starting Game", subtitle);
+	dc_video_present_screen(screen);
 }
 
 /*
@@ -297,12 +343,13 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 
 		if (input.next_device) {
 			browser->root_index++;
-			if (!dc_browser_roots[browser->root_index])
+			if (!dc_browser_roots[browser->root_index].path)
 				browser->root_index = 0;
-			strncpy(browser->root_path, dc_browser_roots[browser->root_index],
+			strncpy(browser->root_path, dc_browser_roots[browser->root_index].path,
 				sizeof(browser->root_path) - 1);
 			browser->root_path[sizeof(browser->root_path) - 1] = '\0';
 			dc_browser_scan(browser);
+			dc_toast_show(dc_browser_device_label(browser), 1200);
 			dirty = true;
 		}
 
@@ -340,9 +387,12 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 		}
 
 		if (input.select && browser->count > 0) {
-			strncpy(selected_path, browser->entries[browser->selected].path,
-				selected_len - 1);
+			const struct dc_browser_entry *entry =
+				&browser->entries[browser->selected];
+
+			strncpy(selected_path, entry->path, selected_len - 1);
 			selected_path[selected_len - 1] = '\0';
+			dc_browser_show_loading(entry->name);
 			return true;
 		}
 

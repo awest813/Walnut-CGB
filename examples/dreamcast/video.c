@@ -11,6 +11,7 @@
 #include <dc/pvr.h>
 #include <dc/video.h>
 
+#include "toast.h"
 #include "ui.h"
 #include "video.h"
 
@@ -40,9 +41,9 @@ static void dc_video_init_sprite_cxt(pvr_sprite_cxt_t *cxt, pvr_sprite_hdr_t *hd
 	hdr->oargb = 0;
 }
 
-static void dc_video_draw_sprite(const pvr_sprite_hdr_t *hdr,
-				 int x, int y, int w, int h,
-				 float u1, float v1)
+static void dc_video_draw_sprite_uv(const pvr_sprite_hdr_t *hdr,
+				    int x, int y, int w, int h,
+				    float u0, float v0, float u1, float v1)
 {
 	pvr_sprite_txr_t vert;
 
@@ -59,12 +60,19 @@ static void dc_video_draw_sprite(const pvr_sprite_hdr_t *hdr,
 	vert.dx = (float)(x + w);
 	vert.dy = (float)(y + h);
 	vert.dummy = 0;
-	vert.auv = DC_PVR_PACK_UV(0.0f, 0.0f);
-	vert.buv = DC_PVR_PACK_UV(u1, 0.0f);
-	vert.cuv = DC_PVR_PACK_UV(0.0f, v1);
+	vert.auv = DC_PVR_PACK_UV(u0, v0);
+	vert.buv = DC_PVR_PACK_UV(u1, v0);
+	vert.cuv = DC_PVR_PACK_UV(u0, v1);
 
 	pvr_prim(hdr, sizeof(*hdr));
 	pvr_prim(&vert, sizeof(vert));
+}
+
+static void dc_video_draw_sprite(const pvr_sprite_hdr_t *hdr,
+				 int x, int y, int w, int h,
+				 float u1, float v1)
+{
+	dc_video_draw_sprite_uv(hdr, x, y, w, h, 0.0f, 0.0f, u1, v1);
 }
 
 static void dc_video_draw_game_sprite(int x, int y, int w, int h)
@@ -140,6 +148,41 @@ void dc_video_present(const struct dc_priv *priv)
 		dc_video_draw_game_sprite(draw_x, draw_y, draw_w, draw_h);
 	}
 
+	pvr_list_finish();
+	pvr_scene_finish();
+
+	dc_video_present_toast_overlay();
+}
+
+void dc_video_present_toast_overlay(void)
+{
+	uint16_t strip[28][DC_SCREEN_WIDTH];
+	const int bar_y = 452;
+	const int bar_h = 28;
+	const float u1 = (float)DC_SCREEN_WIDTH / (float)DC_UI_TEX_WIDTH;
+	const float v1 = (float)bar_h / (float)DC_UI_TEX_HEIGHT;
+	unsigned int y;
+
+	if (!dc_toast_active())
+		return;
+
+	memset(strip, 0, sizeof(strip));
+	dc_ui_fill_rect((uint16_t (*)[DC_SCREEN_WIDTH])strip, 0, 0, DC_SCREEN_WIDTH,
+			bar_h, DC_UI_COLOR_TOAST_BG);
+	dc_ui_draw_text((uint16_t (*)[DC_SCREEN_WIDTH])strip, 12, 10,
+			dc_toast_message(), DC_UI_COLOR_TOAST_FG, DC_UI_COLOR_TOAST_BG);
+
+	for (y = 0; y < (unsigned int)bar_h; y++)
+		memcpy(&ui_upload_buf[y * DC_UI_TEX_WIDTH], strip[y],
+		       DC_SCREEN_WIDTH * sizeof(uint16_t));
+
+	pvr_txr_load(ui_upload_buf, ui_tex, DC_UI_TEX_WIDTH * bar_h * 2);
+
+	pvr_wait_ready();
+	pvr_scene_begin();
+	pvr_list_begin(PVR_LIST_OP_POLY);
+	dc_video_draw_sprite_uv(&ui_sprite_hdr, 0, bar_y, DC_SCREEN_WIDTH, bar_h,
+				0.0f, 0.0f, u1, v1);
 	pvr_list_finish();
 	pvr_scene_finish();
 }

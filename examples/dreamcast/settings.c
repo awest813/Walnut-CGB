@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "palette.h"
 #include "settings.h"
 
 static const char *dc_settings_paths[] = {
@@ -28,7 +29,7 @@ void dc_settings_init_defaults(struct dc_settings *settings)
 
 static void dc_settings_clamp(struct dc_settings *settings)
 {
-	if (settings->palette_index > 12)
+	if (settings->palette_index >= DC_PALETTE_COUNT)
 		settings->palette_index = 3;
 
 	if (settings->autosave_interval_sec < DC_SETTINGS_AUTOSAVE_MIN_SEC)
