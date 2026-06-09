@@ -109,15 +109,13 @@ bool dc_rom_read_header(const char *rom_path, char *title, size_t title_len,
 	return true;
 }
 
-void dc_cover_path_for_rom(const char *rom_path, const char *covers_root,
-			   char *cover_path, size_t cover_path_len)
+static void dc_cover_rom_stem(const char *rom_path, char *stem, size_t stem_len)
 {
-	const char *slash;
 	const char *basename;
-	char stem[96];
-	size_t stem_len;
+	const char *slash;
+	size_t len;
 
-	if (!rom_path || !covers_root || !cover_path || cover_path_len == 0)
+	if (!rom_path || !stem || stem_len == 0)
 		return;
 
 	basename = rom_path;
@@ -125,15 +123,66 @@ void dc_cover_path_for_rom(const char *rom_path, const char *covers_root,
 	if (slash)
 		basename = slash + 1;
 
-	strncpy(stem, basename, sizeof(stem) - 1);
-	stem[sizeof(stem) - 1] = '\0';
-	stem_len = strlen(stem);
-	if (stem_len > 4 && strcasecmp(stem + stem_len - 4, ".gbc") == 0)
-		stem[stem_len - 4] = '\0';
-	else if (stem_len > 3 && strcasecmp(stem + stem_len - 3, ".gb") == 0)
-		stem[stem_len - 3] = '\0';
+	strncpy(stem, basename, stem_len - 1);
+	stem[stem_len - 1] = '\0';
+	len = strlen(stem);
+	if (len > 4 && strcasecmp(stem + len - 4, ".gbc") == 0)
+		stem[len - 4] = '\0';
+	else if (len > 3 && strcasecmp(stem + len - 3, ".gb") == 0)
+		stem[len - 3] = '\0';
+}
 
+void dc_cover_path_for_rom(const char *rom_path, const char *covers_root,
+			   char *cover_path, size_t cover_path_len)
+{
+	char stem[160];
+
+	if (!rom_path || !covers_root || !cover_path || cover_path_len == 0)
+		return;
+
+	dc_cover_rom_stem(rom_path, stem, sizeof(stem));
 	snprintf(cover_path, cover_path_len, "%s/%s.w555", covers_root, stem);
+}
+
+bool dc_cover_load_for_rom(const char *rom_path, const char *covers_root, bool is_cgb,
+			   uint16_t pixels[DC_COVER_HEIGHT][DC_COVER_WIDTH])
+{
+	char stem[160];
+	char path[320];
+
+	if (!rom_path || !covers_root || !pixels)
+		return false;
+
+	dc_cover_rom_stem(rom_path, stem, sizeof(stem));
+
+	snprintf(path, sizeof(path), "%s/%s.w555", covers_root, stem);
+	if (dc_cover_load_file(path, pixels))
+		return true;
+
+	if (is_cgb) {
+		snprintf(path, sizeof(path), "%s/boxart/GBC/%s.w555", covers_root, stem);
+		if (dc_cover_load_file(path, pixels))
+			return true;
+		snprintf(path, sizeof(path), "%s/GBC/%s.w555", covers_root, stem);
+		if (dc_cover_load_file(path, pixels))
+			return true;
+	}
+
+	snprintf(path, sizeof(path), "%s/boxart/GB/%s.w555", covers_root, stem);
+	if (dc_cover_load_file(path, pixels))
+		return true;
+
+	snprintf(path, sizeof(path), "%s/GB/%s.w555", covers_root, stem);
+	if (dc_cover_load_file(path, pixels))
+		return true;
+
+	if (is_cgb) {
+		snprintf(path, sizeof(path), "%s/boxart/GB/%s.w555", covers_root, stem);
+		if (dc_cover_load_file(path, pixels))
+			return true;
+	}
+
+	return false;
 }
 
 bool dc_cover_load_file(const char *cover_path,

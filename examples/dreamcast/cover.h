@@ -22,6 +22,8 @@ void dc_cover_path_for_rom(const char *rom_path, const char *covers_root,
 			   char *cover_path, size_t cover_path_len);
 bool dc_cover_load_file(const char *cover_path,
 			uint16_t pixels[DC_COVER_HEIGHT][DC_COVER_WIDTH]);
+bool dc_cover_load_for_rom(const char *rom_path, const char *covers_root, bool is_cgb,
+			   uint16_t pixels[DC_COVER_HEIGHT][DC_COVER_WIDTH]);
 void dc_cover_make_placeholder(const char *title, const char *filename,
 			       bool is_cgb,
 			       uint16_t pixels[DC_COVER_HEIGHT][DC_COVER_WIDTH]);

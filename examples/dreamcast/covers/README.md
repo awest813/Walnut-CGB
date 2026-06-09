@@ -1,36 +1,56 @@
 # ROM Cover Art
 
-Walnut-DC can show cover art in the ROM picker. **This repository does not ship copyrighted box art** for commercial games. Instead:
+Walnut-DC shows cover art in the ROM picker using Dreamcast-native `.w555` thumbnails (96×96 RGB555).
 
-1. Every ROM gets a **procedural placeholder** (color + initials) automatically.
-2. You can add your own art as sidecar `.w555` files.
+## Bundled art (Game Boy / Game Boy Color)
 
-## Layout
-
-Place covers next to your ROM library:
+This tree includes converted cover art from **[xero/boxart](https://github.com/xero/boxart)** (CC0 / public domain):
 
 ```
-/cd/roms/tetris.gb
-/cd/covers/tetris.w555
+covers/boxart/GB/*.w555
+covers/boxart/GBC/*.w555
 ```
 
-If ROMs live in `/cd/roms`, covers are read from `/cd/covers`. For `/pc` or `/sd`, use `/pc/covers` or `/sd/covers`.
+Art is matched to ROMs by **NoIntro-style filename** (without the extension):
 
-## Create a `.w555` file
+```
+roms/Tetris (World) (Rev 1).gb
+covers/boxart/GB/Tetris (World) (Rev 1).w555
+```
 
-From a PNG or JPEG (96×96 recommended):
+Refresh from upstream:
 
 ```bash
 pip install pillow
-./scripts/convert-cover.py my-cover.png disc-build/covers/tetris.w555
+./scripts/import-boxart.sh
 ```
 
-Format: `W555` magic, 96×96 RGB555 pixels (Dreamcast-native).
+## Lookup order
 
-## ROM picker
+For each ROM, Walnut-DC tries:
 
-- **List view** — titles from the ROM header + large preview panel
-- **Grid view** — press **Y** to toggle a 5×3 cover grid
-- Badges: DMG/GBC, `[SAV]`, and whether a real cover file was loaded
+1. `covers/ROMNAME.w555` — manual override
+2. `covers/boxart/GBC/ROMNAME.w555` or `covers/GBC/ROMNAME.w555` (GBC ROMs)
+3. `covers/boxart/GB/ROMNAME.w555` or `covers/GB/ROMNAME.w555`
+4. Procedural placeholder (color + initials) if nothing matches
 
-Only add cover images you have the right to use (your own shots, licensed packs, or homebrew artwork).
+## Layout on hardware
+
+```
+/cd/roms/Game Name (USA).gbc
+/cd/covers/boxart/GBC/Game Name (USA).w555
+```
+
+`build-disc.sh` copies `covers/boxart/` onto disc images automatically.
+
+## Create your own `.w555`
+
+```bash
+pip install pillow
+./scripts/convert-cover.py my-cover.png custom.w555
+```
+
+## Credits
+
+- Box art images: [xero/boxart](https://github.com/xero/boxart) (CC0), sourced from [ScreenScraper](https://screenscraper.fr)
+- `.w555` conversion and ROM matching: Walnut-CGB Dreamcast frontend

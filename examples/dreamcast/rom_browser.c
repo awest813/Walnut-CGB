@@ -89,14 +89,11 @@ static void dc_browser_set_covers_path(struct dc_browser *browser)
 static void dc_browser_entry_prepare_cover(struct dc_browser *browser,
 					   struct dc_browser_entry *entry)
 {
-	char cover_path[256];
-
 	if (!browser || !entry || entry->cover_ready)
 		return;
 
-	dc_cover_path_for_rom(entry->path, browser->covers_path,
-			      cover_path, sizeof(cover_path));
-	if (dc_cover_load_file(cover_path, entry->cover)) {
+	if (dc_cover_load_for_rom(entry->path, browser->covers_path, entry->is_cgb,
+				  entry->cover)) {
 		entry->cover_from_file = true;
 	} else {
 		dc_cover_make_placeholder(entry->title, entry->name, entry->is_cgb,
@@ -223,7 +220,7 @@ static void dc_browser_draw_preview_panel(struct dc_browser *browser,
 	snprintf(line, sizeof(line), "%s%s%s",
 		 entry->is_cgb ? "GBC" : "DMG",
 		 entry->has_save ? "  [SAV]" : "",
-		 entry->cover_from_file ? "  Cover" : "  Placeholder");
+		 entry->cover_from_file ? "  Box art" : "  Placeholder");
 	dc_ui_draw_text(screen, DC_BROWSER_PREVIEW_X + 8, 296, line,
 			DC_UI_COLOR_DIM, 0x1084);
 }

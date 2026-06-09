@@ -60,7 +60,8 @@ The header shows a friendly device name (for example **GD-ROM** or **SD Card**) 
 - **List view** — ROM titles from the cartridge header, with a large cover preview on the right
 - **Grid view** — 5×3 cover grid (procedural placeholders or your own art)
 - **[SAV]** when a matching `.sav` exists
-- Optional cover files: `covers/ROMNAME.w555` (see [covers/README.md](covers/README.md))
+- **Box art** from [xero/boxart](https://github.com/xero/boxart) (CC0) for matching NoIntro ROM names — see [covers/README.md](covers/README.md)
+- Optional overrides: `covers/ROMNAME.w555`
 
 ### Direct ROM load (dcload)
 
@@ -105,6 +106,7 @@ Accessible from the main menu or pause menu. Options are saved to `walnut-dc.cfg
 | Setting | Description |
 |---------|-------------|
 | Palette | DMG colour palette (named presets) |
+| Video output | Auto, VGA 640×480, or TV 640×480 (uses `vid_check_cable()`) |
 | Scale mode | 3× integer, widescreen, 4× integer, or full screen |
 | Status bar | In-game HUD with title, scale, and volume |
 | Frameskip | Skip LCD updates for speed |
@@ -123,7 +125,9 @@ Accessible from the main menu or pause menu. Options are saved to `walnut-dc.cfg
 ```
 
 3. Copy homebrew `.gb` / `.gbc` ROMs into `disc-build/roms/` before burning.
-4. Burn `disc-build/walnut-dc.iso` or `disc-build/walnut-dc.cdi`.
+4. Box art is bundled automatically from `covers/boxart/` when you run `build-disc.sh`.
+5. Refresh art from upstream: `./scripts/import-boxart.sh`
+6. Burn `disc-build/walnut-dc.iso` or `disc-build/walnut-dc.cdi`.
 
 Disc metadata is defined in `meta/ip.txt` (processed by KOS `makeip`).
 
@@ -147,6 +151,8 @@ Phase 3 (ROM browser + disc packaging) is implemented. Phase 4 hardware validati
 - **Scale modes** including widescreen (640×432) and full-screen stretch
 - **Status bar** HUD during gameplay
 - **Audio controls** for volume, mute, and buffer size
+- **VGA mode** with auto cable detection (VGA box vs TV)
+- **Cover-art ROM picker** with list/grid views and bundled [xero/boxart](https://github.com/xero/boxart) GB/GBC art
 
 ## Licensing
 
