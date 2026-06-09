@@ -37,6 +37,9 @@ void audio_write(uint16_t addr, uint8_t val);
 
 KOS_INIT_FLAGS(INIT_DEFAULT | INIT_MALLOCSTATS);
 
+/* Autosave cadence: roughly every 60 seconds of presented frames. */
+#define DC_AUTOSAVE_INTERVAL_FRAMES ((int)(VERTICAL_SYNC * 60.0))
+
 static struct dc_priv priv;
 static unsigned int palette_selection = 3;
 
@@ -251,7 +254,7 @@ static bool dc_run_game(const char *rom_path, const char *save_path,
 	struct dc_input_state input;
 	unsigned int fast_mode = 1;
 	unsigned int fast_mode_timer = 1;
-	int save_timer = 60;
+	int save_timer = DC_AUTOSAVE_INTERVAL_FRAMES;
 	uint64_t target_ticks;
 	bool running = true;
 
@@ -312,7 +315,7 @@ static bool dc_run_game(const char *rom_path, const char *save_path,
 
 		if (priv.save_size > 0 && --save_timer <= 0) {
 			dc_write_save(&priv);
-			save_timer = 60;
+			save_timer = DC_AUTOSAVE_INTERVAL_FRAMES;
 		}
 
 		{

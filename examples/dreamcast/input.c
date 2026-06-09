@@ -82,7 +82,12 @@ void dc_input_poll(struct dc_input_state *state, struct gb_s *gb)
 			state->exit_requested = true;
 		if ((buttons & CONT_Y) && (changed & CONT_Y))
 			state->cycle_palette = true;
-		if ((buttons & CONT_X) && (changed & CONT_X))
+		/*
+		 * X alone is Game Boy Select, so gate the frameskip toggle
+		 * behind Start+X to avoid flipping it on every menu/map press.
+		 */
+		if ((buttons & CONT_START) && (buttons & CONT_X) &&
+		    (changed & CONT_X))
 			state->toggle_frameskip = true;
 	}
 
