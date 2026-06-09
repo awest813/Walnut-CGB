@@ -39,7 +39,6 @@ KOS_INIT_FLAGS(INIT_DEFAULT | INIT_MALLOCSTATS);
 
 static struct dc_priv priv;
 static unsigned int palette_selection = 3;
-static int save_timer = 60;
 
 uint8_t gb_rom_read(struct gb_s *gb, const uint_fast32_t addr)
 {
@@ -245,52 +244,27 @@ static void dc_write_save(struct dc_priv *p)
 		dc_cart_ram_write_file(p->save_path, p->cart_ram, p->save_size);
 }
 
-int main(int argc, char **argv)
+static bool dc_run_game(const char *rom_path, const char *save_path,
+			bool return_to_browser)
 {
 	struct gb_s gb;
 	struct dc_input_state input;
-	const char *rom_path = NULL;
 	unsigned int fast_mode = 1;
 	unsigned int fast_mode_timer = 1;
+	int save_timer = 60;
 	uint64_t target_ticks;
-	uint64_t last_ticks;
 	bool running = true;
 
-	if (argc < 2) {
-		printf("Usage: %s /path/to/game.gb [save.sav]\n", argv[0]);
-		printf("Example: walnut-dc.elf /pc/roms/tetris.gb\n");
-		return EXIT_FAILURE;
-	}
-
-	rom_path = argv[1];
 	memset(&priv, 0, sizeof(priv));
-
 	if (dc_rom_load(&priv, rom_path) != 0)
-		return EXIT_FAILURE;
+		return return_to_browser;
 
-	if (argc >= 3)
-		strncpy(priv.save_path, argv[2], sizeof(priv.save_path) - 1);
-
-	vid_set_mode(DM_640x480, PM_RGB555);
-	vid_clear(0, 0, 0);
-
-	if (dc_video_init() != 0) {
-		printf("walnut-dc: video init failed\n");
-		dc_rom_unload(&priv);
-		return EXIT_FAILURE;
-	}
-
-#if ENABLE_SOUND
-	if (dc_audio_init() != 0)
-		printf("walnut-dc: audio init failed, continuing without sound\n");
-#endif
-
-	dc_input_init();
+	if (save_path && save_path[0] != '\0')
+		strncpy(priv.save_path, save_path, sizeof(priv.save_path) - 1);
 
 	if (dc_init_emulator(&gb, &priv) != 0) {
-		dc_video_shutdown();
 		dc_rom_unload(&priv);
-		return EXIT_FAILURE;
+		return return_to_browser;
 	}
 
 	{
@@ -301,11 +275,9 @@ int main(int argc, char **argv)
 	}
 
 	target_ticks = (uint64_t)(1000.0 / VERTICAL_SYNC);
-	last_ticks = timer_ms_gettime64();
 
 	while (running) {
 		uint64_t now = timer_ms_gettime64();
-		uint64_t elapsed = now - last_ticks;
 
 		dc_input_poll(&input, &gb);
 
@@ -315,8 +287,12 @@ int main(int argc, char **argv)
 			palette_selection++;
 			dc_manual_assign_palette(&priv, (uint8_t)palette_selection);
 		}
-		if (input.exit_requested)
+		if (input.toggle_frameskip)
+			gb.direct.frame_skip = !gb.direct.frame_skip;
+		if (input.exit_requested) {
+			running = false;
 			break;
+		}
 
 		fast_mode = input.fast_mode;
 		gb_run_frame_dualfetch(&gb);
@@ -338,19 +314,63 @@ int main(int argc, char **argv)
 			save_timer = 60;
 		}
 
-		elapsed = timer_ms_gettime64() - now;
-		if (elapsed < target_ticks)
-			timer_spin((int)(target_ticks - elapsed));
+		{
+			const uint64_t elapsed = timer_ms_gettime64() - now;
 
-		last_ticks = timer_ms_gettime64();
+			if (elapsed < target_ticks)
+				timer_spin((int)(target_ticks - elapsed));
+		}
 	}
 
 	dc_write_save(&priv);
+	dc_rom_unload(&priv);
+
+	if (return_to_browser && input.exit_requested)
+		return true;
+
+	return !input.exit_requested;
+}
+
+int main(int argc, char **argv)
+{
+	struct dc_browser browser;
+	char selected_rom[256];
+
+	vid_set_mode(DM_640x480, PM_RGB555);
+	vid_clear(0, 0, 0);
+
+	if (dc_video_init() != 0) {
+		printf("walnut-dc: video init failed\n");
+		return EXIT_FAILURE;
+	}
+
+#if ENABLE_SOUND
+	if (dc_audio_init() != 0)
+		printf("walnut-dc: audio init failed, continuing without sound\n");
+#endif
+
+	dc_input_init();
+	dc_browser_init(&browser);
+
+	if (argc >= 2) {
+		const char *save_path = (argc >= 3) ? argv[2] : NULL;
+
+		if (!dc_run_game(argv[1], save_path, false))
+			goto shutdown;
+	} else {
+		while (1) {
+			if (!dc_browser_run(&browser, selected_rom, sizeof(selected_rom)))
+				break;
+			if (!dc_run_game(selected_rom, NULL, true))
+				break;
+		}
+	}
+
+shutdown:
 	dc_video_shutdown();
 #if ENABLE_SOUND
 	dc_audio_shutdown();
 #endif
-	dc_rom_unload(&priv);
 
 	return EXIT_SUCCESS;
 }

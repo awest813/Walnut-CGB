@@ -17,6 +17,7 @@ struct dc_input_state
 	bool reset_game;
 	bool exit_requested;
 	bool cycle_palette;
+	bool toggle_frameskip;
 	unsigned int fast_mode;
 };
 

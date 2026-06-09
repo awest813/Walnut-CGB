@@ -25,7 +25,11 @@ examples/dreamcast/
 ├── video.c / video.h          # PVR texture upload and present
 ├── audio.c / audio.h          # snd_stream + MiniGB APU bridge
 ├── input.c / input.h          # Maple controller → joypad
-├── rom_browser.c / rom_browser.h  # ROM/save file I/O and browser
+├── rom_browser.c / rom_browser.h  # ROM/save file I/O and browser UI
+├── ui.c / ui.h                # 640x480 text UI for browser
+├── font8x8.h                  # Embedded ASCII font
+├── meta/ip.txt                # IP.BIN template for disc builds
+├── scripts/build-disc.sh      # ISO/CDI packaging helper
 └── palette.c / palette.h      # DMG palette auto-assignment (from SDL example)
 ```
 
@@ -92,7 +96,7 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 - [x] MiniGB APU wired through `snd_stream`
 - [x] Save/load `.sav` to FAT (`/pc`, `/sd`, `/cd`)
 - [x] Error handler writes `recovery.sav`
-- [ ] Autosave every 60 seconds during play
+- [x] Autosave every 60 seconds during play
 - [ ] Boot test: playable session with sound and persistent save
 
 **Deliverable:** Full play session with audio and save persistence.
@@ -101,11 +105,13 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 
 ## Phase 3 — ROM Browser & Polish
 
-- [ ] Directory scanner for `/cd`, `/sd`, `/ide`, `/pc`
-- [ ] Simple text UI for ROM selection
-- [ ] Boot disc metadata (`IP.BIN`, title screen)
-- [ ] Palette cycling (Y button) and fast-forward (triggers)
-- [ ] Frameskip toggle for slow hardware paths
+- [x] Directory scanner for `/cd`, `/sd`, `/ide`, `/pc`
+- [x] Simple text UI for ROM selection
+- [x] Boot disc metadata (`IP.BIN` template, `scripts/build-disc.sh`)
+- [x] Palette cycling (Y button) and fast-forward (triggers)
+- [x] Frameskip toggle (X button)
+- [x] Start+B returns to browser when launched without ROM argument
+- [ ] Burn test: self-bootable CDI/GDI on hardware
 
 **Deliverable:** Self-contained CDI/GDI image without PC assistance.
 

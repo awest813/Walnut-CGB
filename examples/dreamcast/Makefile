@@ -11,7 +11,7 @@
 #   dc-tool -x walnut-dc.elf /pc/roms/game.gb
 
 TARGET = walnut-dc
-OBJS = walnut_dc.o video.o audio.o input.o rom_browser.o palette.o \
+OBJS = walnut_dc.o video.o audio.o input.o rom_browser.o palette.o ui.o \
 	../sdl2/minigb_apu/minigb_apu.o
 
 KOS_CFLAGS += -I../../ -I../sdl2/minigb_apu

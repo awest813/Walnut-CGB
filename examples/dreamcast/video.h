@@ -8,9 +8,14 @@
 #define DC_VIDEO_H
 
 #include "dc_priv.h"
+#include "ui.h"
+
+#define DC_UI_TEX_WIDTH  1024
+#define DC_UI_TEX_HEIGHT 512
 
 int dc_video_init(void);
 void dc_video_shutdown(void);
 void dc_video_present(const struct dc_priv *priv);
+void dc_video_present_screen(const uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH]);
 
 #endif /* DC_VIDEO_H */
