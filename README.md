@@ -4,20 +4,20 @@
 
 Single-header Game Boy / Game Boy Color emulator library, derived from the portable [Peanut-GB](https://github.com/deltabeard/Peanut-GB) project.
 
-Walnut-CGB reimplements the CPU core for native 16-bit and 32-bit operations using a [dual-fetch chained dispatch model](https://github.com/Mr-PauI/Walnut-CGB/wiki/CPU-opcode-dispatch-model). It includes DMG updates from Peanut-GB mainline, integrated CGB support, and additional bug fixes — some of which are submitted upstream on the [upstream-changes](https://github.com/Mr-PauI/Walnut-CGB/tree/upstream-changes) branch.
+Walnut-CGB reimplements the CPU core for native 16-bit and 32-bit operations using a [dual-fetch chained dispatch model](https://github.com/awest813/Walnut-CGB/wiki/CPU-opcode-dispatch-model). It includes DMG updates from Peanut-GB mainline, integrated CGB support, and additional bug fixes — some of which are submitted upstream on the [upstream-changes](https://github.com/awest813/Walnut-CGB/tree/upstream-changes) branch.
 
 **Current version:** 1.2.3
 
 ## Features
 
 - Game Boy (DMG) and Game Boy Color (CGB) support
-- Cartridge types: MBC1, MBC2, MBC3, MBC30, MBC5
+- Cartridge types: MBC1, MBC2, MBC3, MBC5
 - Real-time clock (RTC) and serial link support
 - Optional boot ROM execution
 - Per-layer DMG palettes (3 layers × 4 shades = 12 colors)
 - Frame skip and interlaced rendering modes
 - LCD and sound can be disabled at compile time
-- [Super Game Boy and Game Boy Color](https://github.com/Mr-PauI/Walnut-CGB/tree/master#additional-resources) 24-bit RGB palette databases
+- [Super Game Boy and Game Boy Color](https://github.com/awest813/Walnut-CGB/tree/master#additional-resources) 24-bit RGB palette databases
 - Example frontends for desktop, embedded, and Dreamcast targets
 
 Sound emulation is not built in. When `ENABLE_SOUND` is set, an external APU library is required — [MiniGB APU](examples/sdl2/minigb_apu) is included with the SDL2 and Dreamcast examples.
@@ -107,20 +107,20 @@ See [`examples/dreamcast/README.md`](examples/dreamcast/README.md) for controls,
 
 Walnut-CGB is mostly a drop-in replacement. API differences are documented in the wiki:
 
-- [Migrating from Peanut-GB](https://github.com/Mr-PauI/Walnut-CGB/wiki/Migrating-from-Peanut%E2%80%90GB)
-- [Wiki home](https://github.com/Mr-PauI/Walnut-CGB/wiki) — implementation details, execution models, framebuffer handling, and code examples
+- [Migrating from Peanut-GB](https://github.com/awest813/Walnut-CGB/wiki/Migrating-from-Peanut%E2%80%90GB)
+- [Wiki home](https://github.com/awest813/Walnut-CGB/wiki) — implementation details, execution models, framebuffer handling, and code examples
 
 ## Integration
 
-Include `walnut_cgb.h` and provide the required callbacks before calling [`gb_init`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_init()).
+Include `walnut_cgb.h` and provide the required callbacks before calling [`gb_init`](https://github.com/awest813/Walnut-CGB/wiki/gb_init()).
 
 ### Required callbacks
 
 | Callback | Purpose |
 |----------|---------|
-| [`gb_rom_read`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_rom_read()) | 8-bit ROM read |
-| [`gb_rom_read_16bit`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_rom_read_16bit()) | 16-bit ROM read (dual-fetch / DMA) |
-| [`gb_rom_read_32bit`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_rom_read_32bit()) | 32-bit ROM read (32-bit DMA) |
+| [`gb_rom_read`](https://github.com/awest813/Walnut-CGB/wiki/gb_rom_read()) | 8-bit ROM read |
+| [`gb_rom_read_16bit`](https://github.com/awest813/Walnut-CGB/wiki/gb_rom_read_16bit()) | 16-bit ROM read (dual-fetch / DMA) |
+| [`gb_rom_read_32bit`](https://github.com/awest813/Walnut-CGB/wiki/gb_rom_read_32bit()) | 32-bit ROM read (32-bit DMA) |
 | `gb_cart_ram_read` | Cart RAM read |
 | `gb_cart_ram_write` | Cart RAM write |
 | `gb_error` | Error handler |
@@ -131,14 +131,14 @@ Both functions advance the emulator by one frame and can be swapped at runtime:
 
 | Function | Model |
 |----------|-------|
-| [`gb_run_frame_dualfetch`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_run_frame_dualfetch()) | 16-bit dual-fetch dispatch (**recommended**) |
-| [`gb_run_frame`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_run_frame()) | Original 8-bit single-instruction dispatch |
+| [`gb_run_frame_dualfetch`](https://github.com/awest813/Walnut-CGB/wiki/gb_run_frame_dualfetch()) | 16-bit dual-fetch dispatch (**recommended**) |
+| [`gb_run_frame`](https://github.com/awest813/Walnut-CGB/wiki/gb_run_frame()) | Original 8-bit single-instruction dispatch |
 
 ### Optional callbacks
 
 | Callback | Enable with | Notes |
 |----------|-------------|-------|
-| [`lcd_draw_line`](https://github.com/Mr-PauI/Walnut-CGB/wiki/lcd_draw_line-example-%7C-Rendering-the-frame-for-DMG-and-CGB) | `ENABLE_LCD` (default 1), set via `gb_init_lcd` | Required for video output |
+| [`lcd_draw_line`](https://github.com/awest813/Walnut-CGB/wiki/lcd_draw_line-example-%7C-Rendering-the-frame-for-DMG-and-CGB) | `ENABLE_LCD` (default 1), set via `gb_init_lcd` | Required for video output |
 | `audio_read` / `audio_write` | `ENABLE_SOUND` (default 1) | Requires external APU |
 | `gb_serial_tx` / `gb_serial_rx` | Set via `gb_init_serial` | Link cable; omitted = no cable connected |
 
@@ -150,12 +150,12 @@ Both functions advance the emulator by one frame and can be swapped at runtime:
 
 | Function | Description |
 |----------|-------------|
-| [`gb_reset`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_reset()) | Power-cycle reset (also called by `gb_init`) |
-| [`gb_get_save_size`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_get_save_size_s()) | Cart RAM save size (0 if none) |
-| [`gb_colour_hash`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_colour_hash()) | Title hash for DMG auto-color (same algorithm as CGB hardware) |
-| [`gb_get_rom_name`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_get_rom_name()) | Game title from ROM header |
-| [`gb_set_rtc`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_set_rtc()) | Set RTC time for MBC3 games |
-| [`gb_set_bootrom`](https://github.com/Mr-PauI/Walnut-CGB/wiki/gb_set_bootrom()) | Use DMG, MGB, or CGB boot ROM (call after `gb_init`, then reset) |
+| [`gb_reset`](https://github.com/awest813/Walnut-CGB/wiki/gb_reset()) | Power-cycle reset (also called by `gb_init`) |
+| [`gb_get_save_size`](https://github.com/awest813/Walnut-CGB/wiki/gb_get_save_size_s()) | Cart RAM save size (0 if none) |
+| [`gb_colour_hash`](https://github.com/awest813/Walnut-CGB/wiki/gb_colour_hash()) | Title hash for DMG auto-color (same algorithm as CGB hardware) |
+| [`gb_get_rom_name`](https://github.com/awest813/Walnut-CGB/wiki/gb_get_rom_name()) | Game title from ROM header |
+| [`gb_set_rtc`](https://github.com/awest813/Walnut-CGB/wiki/gb_set_rtc()) | Set RTC time for MBC3 games |
+| [`gb_set_bootrom`](https://github.com/awest813/Walnut-CGB/wiki/gb_set_bootrom()) | Use DMG, MGB, or CGB boot ROM (call after `gb_init`, then reset) |
 
 `gb_tick_rtc` is deprecated — RTC is ticked internally.
 
@@ -189,7 +189,7 @@ Set to `1` before including `walnut_cgb.h` to enable a feature.
 - [`extras/sgb.h`](extras/sgb.h) — Super Game Boy palettes (indexed RGB888)
 - [`extras/cgb.h`](extras/cgb.h) — Game Boy Color palettes (indexed RGB888)
 
-See the wiki for [implementation details](https://github.com/Mr-PauI/Walnut-CGB/wiki/Using-the-color-databases).
+See the wiki for [implementation details](https://github.com/awest813/Walnut-CGB/wiki/Using-the-color-databases).
 
 ![Super Game Boy palette example](screencaps/sgb_example.png)
 
