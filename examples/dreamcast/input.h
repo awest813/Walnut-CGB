@@ -19,6 +19,7 @@ struct dc_input_state
 	bool pause_requested;
 	bool cycle_palette;
 	bool toggle_frameskip;
+	bool cycle_scale;
 	unsigned int fast_mode;
 };
 

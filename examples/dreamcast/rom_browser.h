@@ -9,27 +9,44 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdint.h>
 
+#include "cover.h"
 #include "dc_priv.h"
 
 #define DC_BROWSER_MAX_ENTRIES 128
-#define DC_BROWSER_VISIBLE_LINES 14
+#define DC_BROWSER_LIST_LINES    9
+#define DC_BROWSER_GRID_COLS     5
+#define DC_BROWSER_GRID_ROWS     3
+
+enum dc_browser_view
+{
+	DC_BROWSER_VIEW_LIST = 0,
+	DC_BROWSER_VIEW_GRID
+};
 
 struct dc_browser_entry
 {
 	char path[256];
-	char name[48];
+	char name[96];
+	char title[17];
+	bool is_cgb;
 	bool has_save;
+	bool cover_ready;
+	bool cover_from_file;
+	uint16_t cover[DC_COVER_HEIGHT][DC_COVER_WIDTH];
 };
 
 struct dc_browser
 {
 	char root_path[64];
+	char covers_path[128];
 	struct dc_browser_entry entries[DC_BROWSER_MAX_ENTRIES];
 	int count;
 	int selected;
 	int scroll;
 	int root_index;
+	enum dc_browser_view view;
 };
 
 struct dc_browser_input
@@ -41,6 +58,7 @@ struct dc_browser_input
 	bool refresh;
 	bool page_up;
 	bool page_down;
+	bool toggle_view;
 	bool exit;
 };
 

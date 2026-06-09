@@ -52,9 +52,16 @@ Browser controls (D-pad or analog stick; hold to repeat):
 | A | Load selected ROM |
 | B | Next device/path |
 | Start | Refresh list |
+| Y | Toggle list / grid view |
 | X | Back to main menu |
 
-The header shows a friendly device name (for example **GD-ROM** or **SD Card**) plus the scan path. ROMs with an existing `.sav` file are marked with **[SAV]**.
+The header shows a friendly device name (for example **GD-ROM** or **SD Card**) plus the scan path.
+
+- **List view** — ROM titles from the cartridge header, with a large cover preview on the right
+- **Grid view** — 5×3 cover grid (procedural placeholders or your own art)
+- **[SAV]** when a matching `.sav` exists
+- **Box art** from [xero/boxart](https://github.com/xero/boxart) (CC0) for matching NoIntro ROM names — see [covers/README.md](covers/README.md)
+- Optional overrides: `covers/ROMNAME.w555`
 
 ### Direct ROM load (dcload)
 
@@ -89,18 +96,24 @@ Load `walnut-dc.elf` with a ROM path argument if your loader supports argv, or u
 | Start + B | Return to main menu (menu mode) or exit (direct load) |
 | Y | Cycle palette |
 | Start + X | Toggle frameskip |
+| Start + L | Cycle scale mode |
 | L / R trigger | Fast-forward (2×) |
 
 ## Settings
 
-Accessible from the main menu or pause menu. Options are saved to `walnut-dc.cfg` on the first writable path (`/pc`, `/sd`, `/ide`, or `/cd`):
+Accessible from the main menu or pause menu. Video and audio changes apply immediately while the menu is open. Options are saved to `walnut-dc.cfg` on the first writable path (`/pc`, `/sd`, `/ide`, or `/cd`):
 
 | Setting | Description |
 |---------|-------------|
 | Palette | DMG colour palette (named presets) |
+| Video output | Auto, VGA 640×480, or TV 640×480 (uses `vid_check_cable()`) |
+| Scale mode | 3× integer, widescreen, 4× integer, or full screen |
+| Status bar | In-game HUD with title, scale, and volume |
 | Frameskip | Skip LCD updates for speed |
 | Autosave | Periodic battery-RAM save during play |
 | Autosave interval | Seconds between autosaves (10–300) |
+| Volume | Master audio level (0–100%); press A on this row to mute |
+| Audio buffer | Low latency, normal, or stable buffering |
 
 ## Boot Disc (CDI/GDI)
 
@@ -112,7 +125,10 @@ Accessible from the main menu or pause menu. Options are saved to `walnut-dc.cfg
 ```
 
 3. Copy homebrew `.gb` / `.gbc` ROMs into `disc-build/roms/` before burning.
-4. Burn `disc-build/walnut-dc.iso` or `disc-build/walnut-dc.cdi`.
+4. Box art is bundled automatically from `covers/boxart/` when you run `build-disc.sh`.
+5. Refresh art from upstream: `./scripts/import-boxart.sh` or `make -f Makefile.covers fetch-covers`
+6. Fetch covers only for ROMs on the disc: `make -f Makefile.covers fetch-roms ROMS_DIR=disc-build/roms`
+6. Burn `disc-build/walnut-dc.iso` or `disc-build/walnut-dc.cdi`.
 
 Disc metadata is defined in `meta/ip.txt` (processed by KOS `makeip`).
 
@@ -133,6 +149,12 @@ Phase 3 (ROM browser + disc packaging) is implemented. Phase 4 hardware validati
 - **Save/load confirmations** in the pause menu
 - **Loading screen** when starting a ROM from the browser
 - **Save indicators** in the ROM library
+- **Scale modes** including widescreen (640×432) and full-screen stretch
+- **Status bar** HUD during gameplay
+- **Audio controls** for volume, mute, and buffer size
+- **VGA mode** with auto cable detection (VGA box vs TV)
+- **Cover-art ROM picker** with list/grid views and bundled [xero/boxart](https://github.com/xero/boxart) GB/GBC art
+- **Live settings** for video output, scale, and audio while browsing options
 
 ## Licensing
 

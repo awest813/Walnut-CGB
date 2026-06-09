@@ -133,23 +133,71 @@ void dc_ui_draw_text_ellipsis(uint16_t fb[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH],
 void dc_ui_draw_toast_bar(uint16_t fb[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH],
 			  const char *message)
 {
-	const int bar_y = 452;
 	const int bar_h = 28;
 
-	dc_ui_fill_rect(fb, 0, bar_y, DC_SCREEN_WIDTH, bar_h, DC_UI_COLOR_TOAST_BG);
-	dc_ui_draw_text(fb, 12, bar_y + 10, message ? message : "",
-			DC_UI_COLOR_TOAST_FG, DC_UI_COLOR_TOAST_BG);
+	dc_ui_fill_rect(fb, 0, DC_UI_FOOTER_Y, DC_SCREEN_WIDTH, bar_h,
+			DC_UI_COLOR_TOAST_BG);
+	dc_ui_draw_text(fb, DC_UI_MARGIN_X, DC_UI_FOOTER_Y + 10,
+			message ? message : "", DC_UI_COLOR_TOAST_FG,
+			DC_UI_COLOR_TOAST_BG);
+}
+
+void dc_ui_draw_header(uint16_t fb[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH],
+		       const char *title, const char *subtitle)
+{
+	dc_ui_fill_rect(fb, 0, 0, DC_SCREEN_WIDTH, DC_UI_HEADER_HEIGHT,
+			DC_UI_COLOR_HEADER);
+	dc_ui_draw_text(fb, DC_UI_MARGIN_X, 12, title ? title : "",
+			DC_UI_COLOR_BG, DC_UI_COLOR_HEADER);
+
+	if (subtitle && subtitle[0] != '\0')
+		dc_ui_draw_text(fb, DC_UI_MARGIN_X, 48, subtitle, DC_UI_COLOR_DIM,
+				DC_UI_COLOR_BG);
+}
+
+void dc_ui_draw_footer(uint16_t fb[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH],
+		       const char *text)
+{
+	if (!text || text[0] == '\0')
+		return;
+
+	dc_ui_draw_text(fb, DC_UI_MARGIN_X, DC_UI_FOOTER_Y, text, DC_UI_COLOR_DIM,
+			DC_UI_COLOR_BG);
+}
+
+void dc_ui_draw_panel(uint16_t fb[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH],
+		      int x, int y, int w, int h, uint16_t fill)
+{
+	dc_ui_fill_rect(fb, x, y, w, h, fill);
+	dc_ui_fill_rect(fb, x, y, w, 1, DC_UI_COLOR_BORDER);
+	dc_ui_fill_rect(fb, x, y + h - 1, w, 1, DC_UI_COLOR_BORDER);
+	dc_ui_fill_rect(fb, x, y, 1, h, DC_UI_COLOR_BORDER);
+	dc_ui_fill_rect(fb, x + w - 1, y, 1, h, DC_UI_COLOR_BORDER);
 }
 
 void dc_ui_draw_loading(uint16_t fb[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH],
-			const char *title, const char *subtitle)
+			const char *title, const char *subtitle, int progress_pct)
 {
+	const int bar_x = 200;
+	const int bar_y = 220;
+	const int bar_w = 240;
+	const int bar_h = 8;
+	int fill_w;
+
+	if (progress_pct < 0)
+		progress_pct = 0;
+	if (progress_pct > 100)
+		progress_pct = 100;
+
+	fill_w = bar_w * progress_pct / 100;
+	if (fill_w < 8 && progress_pct > 0)
+		fill_w = 8;
+
 	dc_ui_clear(fb, DC_UI_COLOR_BG);
-	dc_ui_fill_rect(fb, 0, 0, DC_SCREEN_WIDTH, 36, DC_UI_COLOR_HEADER);
-	dc_ui_draw_text(fb, 12, 12, title ? title : "Loading", DC_UI_COLOR_BG,
-			DC_UI_COLOR_HEADER);
-	dc_ui_fill_rect(fb, 200, 220, 240, 8, DC_UI_COLOR_TRACK);
-	dc_ui_fill_rect(fb, 200, 220, 120, 8, DC_UI_COLOR_ACCENT);
-	dc_ui_draw_text(fb, 200, 248, subtitle ? subtitle : "Please wait...",
+	dc_ui_draw_header(fb, title ? title : "Loading", NULL);
+	dc_ui_fill_rect(fb, bar_x, bar_y, bar_w, bar_h, DC_UI_COLOR_TRACK);
+	if (fill_w > 0)
+		dc_ui_fill_rect(fb, bar_x, bar_y, fill_w, bar_h, DC_UI_COLOR_ACCENT);
+	dc_ui_draw_text(fb, bar_x, 248, subtitle ? subtitle : "Please wait...",
 			DC_UI_COLOR_FG, DC_UI_COLOR_BG);
 }

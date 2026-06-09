@@ -2,3 +2,6 @@
 *.bin
 *.o
 disc-build/
+.boxart-src/
+.boxart-fetch/
+__pycache__/

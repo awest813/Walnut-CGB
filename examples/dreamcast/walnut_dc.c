@@ -29,6 +29,7 @@ void audio_write(uint16_t addr, uint8_t val);
 #include "../../walnut_cgb.h"
 
 #include "audio.h"
+#include "display.h"
 #include "dc_priv.h"
 #include "input.h"
 #include "menu.h"
@@ -52,11 +53,46 @@ static int dc_autosave_interval_frames(void)
 	return (int)(VERTICAL_SYNC * (double)app_settings.autosave_interval_sec);
 }
 
+static void dc_apply_av_settings(void)
+{
+	dc_display_init(app_settings.video_output);
+	dc_video_set_scale_mode(app_settings.scale_mode);
+#if ENABLE_SOUND
+	dc_audio_configure(app_settings.volume, app_settings.muted,
+			   app_settings.audio_buffer);
+#endif
+}
+
+static void dc_on_settings_changed(struct dc_settings *settings)
+{
+	(void)settings;
+	dc_apply_av_settings();
+}
+
 static void dc_apply_settings_to_game(struct gb_s *gb, struct dc_priv *p)
 {
 	gb->direct.frame_skip = app_settings.frameskip;
 	palette_selection = app_settings.palette_index;
 	dc_manual_assign_palette(p, (uint8_t)palette_selection);
+	dc_apply_av_settings();
+}
+
+static void dc_build_status_bar_text(const char *rom_title, char *line, size_t len)
+{
+	if (!line || len == 0)
+		return;
+
+	if (app_settings.muted) {
+		snprintf(line, len, "%s | %s | Mute",
+			 rom_title ? rom_title : "Game",
+			 dc_video_scale_mode_name(app_settings.scale_mode));
+		return;
+	}
+
+	snprintf(line, len, "%s | %s | Vol %u%%",
+		 rom_title ? rom_title : "Game",
+		 dc_video_scale_mode_name(app_settings.scale_mode),
+		 app_settings.volume);
 }
 
 uint8_t gb_rom_read(struct gb_s *gb, const uint_fast32_t addr)
@@ -335,6 +371,7 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 	bool running = true;
 	bool paused = false;
 	bool return_to_main_menu = false;
+	char rom_title[17];
 
 	memset(&priv, 0, sizeof(priv));
 	if (dc_rom_load(&priv, rom_path) != 0) {
@@ -354,12 +391,9 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 	dc_apply_settings_to_game(&gb, &priv);
 	save_timer = dc_autosave_interval_frames();
 
-	{
-		char title[28] = "Walnut-DC: ";
-
-		gb_get_rom_name(&gb, title + 11);
-		printf("%s\n", title);
-	}
+	gb_get_rom_name(&gb, rom_title);
+	rom_title[sizeof(rom_title) - 1] = '\0';
+	printf("Walnut-DC: %s\n", rom_title);
 
 	target_ticks = (uint64_t)(1000.0 / VERTICAL_SYNC);
 
@@ -376,12 +410,23 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 			app_settings.palette_index = (uint8_t)palette_selection;
 			dc_toast_show(dc_palette_name((uint8_t)palette_selection),
 				      DC_TOAST_DURATION_MS);
+			dc_settings_save(&app_settings);
 		}
 		if (input.toggle_frameskip) {
 			gb.direct.frame_skip = !gb.direct.frame_skip;
 			app_settings.frameskip = gb.direct.frame_skip;
 			dc_toast_show(gb.direct.frame_skip ? "Frameskip on" : "Frameskip off",
 				      DC_TOAST_DURATION_MS);
+			dc_settings_save(&app_settings);
+		}
+		if (input.cycle_scale) {
+			app_settings.scale_mode =
+				(enum dc_scale_mode)((app_settings.scale_mode + 1) %
+						     DC_SCALE_COUNT);
+			dc_video_set_scale_mode(app_settings.scale_mode);
+			dc_toast_show(dc_video_scale_mode_name(app_settings.scale_mode),
+				      DC_TOAST_DURATION_MS);
+			dc_settings_save(&app_settings);
 		}
 		if (input.pause_requested) {
 			paused = true;
@@ -429,6 +474,17 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 
 		fast_mode_timer = fast_mode;
 		dc_video_present(&priv);
+		if (app_settings.status_bar || dc_toast_active()) {
+			char status_line[64];
+			const char *status = NULL;
+
+			if (app_settings.status_bar) {
+				dc_build_status_bar_text(rom_title, status_line,
+							 sizeof(status_line));
+				status = status_line;
+			}
+			dc_video_present_overlays(status);
+		}
 
 		if (save_timer > 0 && priv.save_size > 0 && --save_timer <= 0) {
 			dc_write_save(&priv);
@@ -462,7 +518,9 @@ int main(int argc, char **argv)
 	char selected_rom[256];
 	bool show_start_menu = true;
 
-	vid_set_mode(DM_640x480, PM_RGB555);
+	dc_settings_load(&app_settings);
+	dc_menu_set_settings_apply_callback(dc_on_settings_changed);
+	dc_apply_av_settings();
 	vid_clear(0, 0, 0);
 
 	if (dc_video_init() != 0) {
@@ -476,7 +534,6 @@ int main(int argc, char **argv)
 #endif
 
 	dc_input_init();
-	dc_settings_load(&app_settings);
 	palette_selection = app_settings.palette_index;
 	dc_browser_init(&browser);
 
@@ -501,6 +558,7 @@ int main(int argc, char **argv)
 			if (action == DC_MAIN_MENU_SETTINGS) {
 				dc_settings_menu_run(&app_settings);
 				palette_selection = app_settings.palette_index;
+				dc_apply_av_settings();
 				continue;
 			}
 

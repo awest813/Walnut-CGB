@@ -18,8 +18,15 @@
 #include "ui.h"
 #include "video.h"
 
-#define DC_BROWSER_LINE_HEIGHT 24
-#define DC_BROWSER_LIST_TOP    80
+#define DC_BROWSER_LINE_HEIGHT 22
+#define DC_BROWSER_LIST_TOP    68
+#define DC_BROWSER_LIST_LEFT   8
+#define DC_BROWSER_LIST_WIDTH  268
+#define DC_BROWSER_PREVIEW_X   288
+#define DC_BROWSER_GRID_TOP    68
+#define DC_BROWSER_HELP_Y      56
+#define DC_BROWSER_GRID_CELL_W 120
+#define DC_BROWSER_GRID_CELL_H 108
 #define DC_REPEAT_DELAY_FRAMES 18
 #define DC_REPEAT_RATE_FRAMES  4
 #define DC_ANALOG_THRESHOLD    64
@@ -66,12 +73,46 @@ static int dc_browser_entry_compare(const void *a, const void *b)
 	return strcasecmp(ea->name, eb->name);
 }
 
+static void dc_browser_set_covers_path(struct dc_browser *browser)
+{
+	const char *root = browser->root_path;
+	const size_t root_len = strlen(root);
+
+	if (root_len >= 5 && strcmp(root + root_len - 5, "/roms") == 0) {
+		snprintf(browser->covers_path, sizeof(browser->covers_path),
+			 "%.*s/covers", (int)(root_len - 5), root);
+		return;
+	}
+
+	snprintf(browser->covers_path, sizeof(browser->covers_path), "%s/covers", root);
+}
+
+static void dc_browser_entry_prepare_cover(struct dc_browser *browser,
+					   struct dc_browser_entry *entry)
+{
+	if (!browser || !entry || entry->cover_ready)
+		return;
+
+	if (dc_cover_load_for_rom(entry->path, browser->covers_path, entry->is_cgb,
+				  entry->cover)) {
+		entry->cover_from_file = true;
+	} else {
+		dc_cover_make_placeholder(entry->title, entry->name, entry->is_cgb,
+					  entry->cover);
+		entry->cover_from_file = false;
+	}
+
+	entry->cover_ready = true;
+}
+
 void dc_browser_init(struct dc_browser *browser)
 {
 	memset(browser, 0, sizeof(*browser));
 	browser->root_index = 0;
+	browser->view = DC_BROWSER_VIEW_LIST;
 	strncpy(browser->root_path, dc_browser_roots[0].path,
 		sizeof(browser->root_path) - 1);
+	dc_browser_set_covers_path(browser);
 }
 
 const char *dc_browser_device_label(const struct dc_browser *browser)
@@ -111,6 +152,10 @@ int dc_browser_scan(struct dc_browser *browser)
 			 browser->root_path, name);
 		strncpy(slot->name, name, sizeof(slot->name) - 1);
 		slot->name[sizeof(slot->name) - 1] = '\0';
+		slot->cover_ready = false;
+		slot->cover_from_file = false;
+		dc_rom_read_header(slot->path, slot->title, sizeof(slot->title),
+				   &slot->is_cgb, NULL);
 		slot->has_save = false;
 		if (dc_save_path_from_rom(slot->path, save_path, sizeof(save_path)) == 0) {
 			FILE *save_file = fopen(save_path, "rb");
@@ -124,89 +169,167 @@ int dc_browser_scan(struct dc_browser *browser)
 	}
 
 	closedir(dir);
+	dc_browser_set_covers_path(browser);
 	browser->count = count;
 	qsort(browser->entries, (size_t)browser->count, sizeof(browser->entries[0]),
 	      dc_browser_entry_compare);
 	return count;
 }
 
-static void dc_browser_draw(const struct dc_browser *browser,
-			    uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH])
+static void dc_browser_draw_header(const struct dc_browser *browser,
+				   uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH])
+{
+	char subtitle[96];
+
+	snprintf(subtitle, sizeof(subtitle), "%s  [%s]  %s",
+		 dc_browser_device_label(browser),
+		 browser->view == DC_BROWSER_VIEW_GRID ? "Grid" : "List",
+		 browser->root_path);
+	subtitle[sizeof(subtitle) - 1] = '\0';
+	dc_ui_draw_header(screen, "ROM Library", subtitle);
+	dc_ui_draw_text_clipped(screen, DC_UI_MARGIN_X, DC_BROWSER_HELP_Y,
+				DC_SCREEN_WIDTH - DC_UI_MARGIN_X * 2,
+				"A:Load  B:Device  Y:View  L/R:Page  Start:Refresh  X:Back",
+				DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+}
+
+static void dc_browser_draw_preview_panel(struct dc_browser *browser,
+					uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH])
+{
+	struct dc_browser_entry *entry;
+	char line[80];
+	const int cover_x = DC_BROWSER_PREVIEW_X + 70;
+	const int cover_y = 72;
+
+	if (browser->count <= 0 || browser->selected < 0 ||
+	    browser->selected >= browser->count)
+		return;
+
+	entry = &browser->entries[browser->selected];
+	dc_browser_entry_prepare_cover(browser, entry);
+
+	dc_ui_draw_panel(screen, DC_BROWSER_PREVIEW_X, DC_BROWSER_LIST_TOP,
+			 DC_SCREEN_WIDTH - DC_BROWSER_PREVIEW_X,
+			 DC_UI_FOOTER_Y - DC_BROWSER_LIST_TOP - 8, DC_UI_COLOR_PANEL);
+	dc_cover_draw(screen, cover_x, cover_y, 160, 160, entry->cover);
+	dc_ui_draw_text(screen, DC_BROWSER_PREVIEW_X + 8, 248, entry->title,
+			DC_UI_COLOR_TITLE, DC_UI_COLOR_PANEL);
+	dc_ui_draw_text_ellipsis(screen, DC_BROWSER_PREVIEW_X + 8, 272,
+				 DC_SCREEN_WIDTH - DC_BROWSER_PREVIEW_X - 16,
+				 entry->name, DC_UI_COLOR_FG, DC_UI_COLOR_PANEL);
+	snprintf(line, sizeof(line), "%s%s%s",
+		 entry->is_cgb ? "GBC" : "DMG",
+		 entry->has_save ? "  [SAV]" : "",
+		 entry->cover_from_file ? "  Box art" : "  Placeholder");
+	dc_ui_draw_text(screen, DC_BROWSER_PREVIEW_X + 8, 296, line,
+			DC_UI_COLOR_DIM, DC_UI_COLOR_PANEL);
+}
+
+static void dc_browser_draw_list(const struct dc_browser *browser,
+				 uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH])
 {
 	char line[80];
-	int visible = DC_BROWSER_VISIBLE_LINES;
 	int i;
 
-	dc_ui_clear(screen, DC_UI_COLOR_BG);
-	dc_ui_fill_rect(screen, 0, 0, DC_SCREEN_WIDTH, 28, DC_UI_COLOR_HEADER);
-	snprintf(line, sizeof(line), "ROM Library  %s",
-		 dc_browser_device_label(browser));
-	dc_ui_draw_text(screen, 12, 10, line, DC_UI_COLOR_BG, DC_UI_COLOR_HEADER);
-	snprintf(line, sizeof(line), "%s", browser->root_path);
-	dc_ui_draw_text(screen, 12, 34, line, DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
-	dc_ui_draw_text(screen, 12, 52,
-			"Up/Dn:Move  L/R:Page  A:Load  B:Device  Start:Refresh  X:Back",
-			DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
-
-	if (browser->count == 0) {
-		dc_ui_draw_text(screen, 12, 88, "No ROM files found.",
-				DC_UI_COLOR_FG, DC_UI_COLOR_BG);
-		dc_ui_draw_text(screen, 12, 112,
-				"Add .gb/.gbc files, then press Start to refresh.",
-				DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
-		dc_ui_draw_text(screen, 12, 136, "Press B to try another storage device.",
-				DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
-		dc_toast_draw(screen);
-		return;
-	}
-
-	for (i = 0; i < visible; i++) {
+	for (i = 0; i < DC_BROWSER_LIST_LINES; i++) {
 		const int index = browser->scroll + i;
 		const int y = DC_BROWSER_LIST_TOP + i * DC_BROWSER_LINE_HEIGHT;
 		uint16_t fg = DC_UI_COLOR_FG;
 		uint16_t bg = DC_UI_COLOR_BG;
-		const struct dc_browser_entry *entry = &browser->entries[index];
-		const int name_width = browser->entries[index].has_save ?
-				       DC_SCREEN_WIDTH - 88 : DC_SCREEN_WIDTH - 32;
 
 		if (index >= browser->count)
 			break;
 
-		if (index == browser->selected) {
-			dc_ui_fill_rect(screen, 8, y - 2, DC_SCREEN_WIDTH - 16,
-					DC_BROWSER_LINE_HEIGHT, DC_UI_COLOR_SELECT);
-			fg = DC_UI_COLOR_FG;
-			bg = DC_UI_COLOR_SELECT;
+		{
+			const struct dc_browser_entry *entry = &browser->entries[index];
+
+			if (index == browser->selected) {
+				dc_ui_fill_rect(screen, DC_BROWSER_LIST_LEFT, y - 2,
+						DC_BROWSER_LIST_WIDTH,
+						DC_BROWSER_LINE_HEIGHT, DC_UI_COLOR_SELECT);
+				bg = DC_UI_COLOR_SELECT;
+			}
+
+			snprintf(line, sizeof(line), "%c %s%s",
+				 index == browser->selected ? '>' : ' ',
+				 entry->title, entry->has_save ? " [SAV]" : "");
+			dc_ui_draw_text_ellipsis(screen, DC_BROWSER_LIST_LEFT + 8, y,
+						DC_BROWSER_LIST_WIDTH - 16, line, fg, bg);
 		}
-
-		snprintf(line, sizeof(line), "%c ",
-			 index == browser->selected ? '>' : ' ');
-		dc_ui_draw_text(screen, 16, y, line, fg, bg);
-		dc_ui_draw_text_ellipsis(screen, 32, y, name_width, entry->name, fg, bg);
-		if (entry->has_save)
-			dc_ui_draw_text(screen, DC_SCREEN_WIDTH - 72, y, "[SAV]",
-					DC_UI_COLOR_SAVE, bg);
 	}
 
-	if (browser->count > DC_BROWSER_VISIBLE_LINES) {
-		const int track_x = DC_SCREEN_WIDTH - 10;
-		const int track_y = DC_BROWSER_LIST_TOP - 4;
-		const int track_h = DC_BROWSER_VISIBLE_LINES * DC_BROWSER_LINE_HEIGHT;
-		const int max_scroll = browser->count - DC_BROWSER_VISIBLE_LINES;
-		int thumb_h = track_h * DC_BROWSER_VISIBLE_LINES / browser->count;
-		int thumb_y;
+	dc_browser_draw_preview_panel((struct dc_browser *)browser, screen);
+}
 
-		if (thumb_h < 12)
-			thumb_h = 12;
-		thumb_y = track_y + (track_h - thumb_h) * browser->scroll / max_scroll;
+static void dc_browser_draw_grid(const struct dc_browser *browser,
+				 uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH])
+{
+	int row;
+	int col;
 
-		dc_ui_fill_rect(screen, track_x, track_y, 4, track_h, DC_UI_COLOR_TRACK);
-		dc_ui_fill_rect(screen, track_x, thumb_y, 4, thumb_h, DC_UI_COLOR_THUMB);
+	for (row = 0; row < DC_BROWSER_GRID_ROWS; row++) {
+		for (col = 0; col < DC_BROWSER_GRID_COLS; col++) {
+			const int index = browser->scroll + row * DC_BROWSER_GRID_COLS + col;
+			const int x = 8 + col * DC_BROWSER_GRID_CELL_W;
+			const int y = DC_BROWSER_GRID_TOP + row * DC_BROWSER_GRID_CELL_H;
+			struct dc_browser_entry *entry;
+
+			if (index >= browser->count)
+				break;
+
+			entry = &browser->entries[index];
+			dc_browser_entry_prepare_cover((struct dc_browser *)browser, entry);
+
+			if (index == browser->selected)
+				dc_ui_fill_rect(screen, x - 2, y - 2,
+						DC_BROWSER_GRID_CELL_W - 4,
+						DC_BROWSER_GRID_CELL_H - 4,
+						DC_UI_COLOR_SELECT);
+
+			dc_cover_draw(screen, x + 10, y + 4, 80, 80, entry->cover);
+			if (entry->has_save)
+				dc_ui_fill_rect(screen, x + 86, y + 4, 8, 8,
+						DC_UI_COLOR_SAVE);
+			dc_ui_draw_text_ellipsis(screen, x + 4, y + 88,
+						DC_BROWSER_GRID_CELL_W - 8,
+						entry->title, DC_UI_COLOR_FG, DC_UI_COLOR_BG);
+		}
 	}
+}
+
+static void dc_browser_draw(const struct dc_browser *browser,
+			    uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH])
+{
+	char line[80];
+
+	dc_ui_clear(screen, DC_UI_COLOR_BG);
+	dc_browser_draw_header(browser, screen);
+
+	if (browser->count == 0) {
+		dc_ui_draw_panel(screen, 72, 108, 496, 168, DC_UI_COLOR_PANEL);
+		dc_ui_draw_text(screen, 96, 132, "No ROM files found.",
+				DC_UI_COLOR_TITLE, DC_UI_COLOR_PANEL);
+		dc_ui_draw_text(screen, 96, 160,
+				"Add .gb/.gbc files to this device path,",
+				DC_UI_COLOR_FG, DC_UI_COLOR_PANEL);
+		dc_ui_draw_text(screen, 96, 184,
+				"then press Start to refresh the list.",
+				DC_UI_COLOR_FG, DC_UI_COLOR_PANEL);
+		dc_ui_draw_text(screen, 96, 220,
+				"Box art: covers/boxart/GB|GBC/ROMNAME.w555",
+				DC_UI_COLOR_DIM, DC_UI_COLOR_PANEL);
+		dc_toast_draw(screen);
+		return;
+	}
+
+	if (browser->view == DC_BROWSER_VIEW_GRID)
+		dc_browser_draw_grid(browser, screen);
+	else
+		dc_browser_draw_list(browser, screen);
 
 	snprintf(line, sizeof(line), "%d / %d ROMs", browser->selected + 1,
 		 browser->count);
-	dc_ui_draw_text(screen, 12, 452, line, DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
+	dc_ui_draw_footer(screen, line);
 	dc_toast_draw(screen);
 }
 
@@ -214,12 +337,19 @@ void dc_browser_show_loading(const char *rom_name)
 {
 	uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH];
 	char subtitle[64];
+	int frame;
 
 	snprintf(subtitle, sizeof(subtitle), "Loading %s",
 		 rom_name ? rom_name : "ROM");
 	subtitle[sizeof(subtitle) - 1] = '\0';
-	dc_ui_draw_loading(screen, "Starting Game", subtitle);
-	dc_video_present_screen(screen);
+
+	for (frame = 0; frame <= 12; frame++) {
+		const int progress = frame * 100 / 12;
+
+		dc_ui_draw_loading(screen, "Starting Game", subtitle, progress);
+		dc_video_present_screen(screen);
+		timer_spin(DC_FRAME_MS);
+	}
 }
 
 /*
@@ -290,6 +420,8 @@ static void dc_browser_poll_input(struct dc_browser *browser,
 		input->refresh = true;
 	if ((buttons & CONT_X) && (changed & CONT_X))
 		input->exit = true;
+	if ((buttons & CONT_Y) && (changed & CONT_Y))
+		input->toggle_view = true;
 
 	previous_buttons = buttons;
 	return;
@@ -299,17 +431,39 @@ release:
 	previous_buttons = 0xFFFF;
 }
 
+static int dc_browser_visible_slots(const struct dc_browser *browser)
+{
+	if (browser->view == DC_BROWSER_VIEW_GRID)
+		return DC_BROWSER_GRID_COLS * DC_BROWSER_GRID_ROWS;
+
+	return DC_BROWSER_LIST_LINES;
+}
+
 static void dc_browser_update_scroll(struct dc_browser *browser)
 {
+	const int visible = dc_browser_visible_slots(browser);
+
 	if (browser->count <= 0) {
 		browser->scroll = 0;
 		return;
 	}
 
+	if (browser->view == DC_BROWSER_VIEW_GRID) {
+		const int selected_row = browser->selected / DC_BROWSER_GRID_COLS;
+		const int scroll_row = browser->scroll / DC_BROWSER_GRID_COLS;
+
+		if (selected_row < scroll_row)
+			browser->scroll = selected_row * DC_BROWSER_GRID_COLS;
+		if (selected_row >= scroll_row + DC_BROWSER_GRID_ROWS)
+			browser->scroll =
+				(selected_row - DC_BROWSER_GRID_ROWS + 1) * DC_BROWSER_GRID_COLS;
+		return;
+	}
+
 	if (browser->selected < browser->scroll)
 		browser->scroll = browser->selected;
-	if (browser->selected >= browser->scroll + DC_BROWSER_VISIBLE_LINES)
-		browser->scroll = browser->selected - DC_BROWSER_VISIBLE_LINES + 1;
+	if (browser->selected >= browser->scroll + visible)
+		browser->scroll = browser->selected - visible + 1;
 }
 
 bool dc_browser_run(struct dc_browser *browser, char *selected_path,
@@ -317,6 +471,7 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 {
 	uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH];
 	bool dirty = true;
+	bool toast_visible = false;
 
 	if (!browser || !selected_path || selected_len == 0)
 		return false;
@@ -327,13 +482,14 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 	while (1) {
 		const uint64_t frame_start = timer_ms_gettime64();
 		struct dc_browser_input input;
+		const bool toast_active = dc_toast_active();
 		uint64_t elapsed;
 
-		/* Only repaint and re-upload the UI texture when state changes. */
-		if (dirty) {
+		if (dirty || toast_active || toast_visible) {
 			dc_browser_draw(browser, screen);
 			dc_video_present_screen(screen);
 			dirty = false;
+			toast_visible = toast_active;
 		}
 
 		dc_browser_poll_input(browser, &input);
@@ -348,6 +504,7 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 			strncpy(browser->root_path, dc_browser_roots[browser->root_index].path,
 				sizeof(browser->root_path) - 1);
 			browser->root_path[sizeof(browser->root_path) - 1] = '\0';
+			dc_browser_set_covers_path(browser);
 			dc_browser_scan(browser);
 			dc_toast_show(dc_browser_device_label(browser), 1200);
 			dirty = true;
@@ -358,29 +515,47 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 			dirty = true;
 		}
 
+		if (input.toggle_view) {
+			browser->view = browser->view == DC_BROWSER_VIEW_GRID ?
+					DC_BROWSER_VIEW_LIST : DC_BROWSER_VIEW_GRID;
+			dc_browser_update_scroll(browser);
+			dc_toast_show(browser->view == DC_BROWSER_VIEW_GRID ?
+					      "Grid view" : "List view",
+				      1000);
+			dirty = true;
+		}
+
 		if (input.up && browser->count > 0) {
-			browser->selected--;
+			browser->selected -= browser->view == DC_BROWSER_VIEW_GRID ?
+					       DC_BROWSER_GRID_COLS : 1;
 			if (browser->selected < 0)
 				browser->selected = browser->count - 1;
 			dirty = true;
 		}
 
 		if (input.down && browser->count > 0) {
-			browser->selected++;
+			browser->selected += browser->view == DC_BROWSER_VIEW_GRID ?
+					       DC_BROWSER_GRID_COLS : 1;
 			if (browser->selected >= browser->count)
 				browser->selected = 0;
 			dirty = true;
 		}
 
 		if (input.page_up && browser->count > 0) {
-			browser->selected -= DC_BROWSER_VISIBLE_LINES;
+			if (browser->view == DC_BROWSER_VIEW_GRID)
+				browser->selected--;
+			else
+				browser->selected -= dc_browser_visible_slots(browser);
 			if (browser->selected < 0)
 				browser->selected = 0;
 			dirty = true;
 		}
 
 		if (input.page_down && browser->count > 0) {
-			browser->selected += DC_BROWSER_VISIBLE_LINES;
+			if (browser->view == DC_BROWSER_VIEW_GRID)
+				browser->selected++;
+			else
+				browser->selected += dc_browser_visible_slots(browser);
 			if (browser->selected >= browser->count)
 				browser->selected = browser->count - 1;
 			dirty = true;
@@ -392,7 +567,7 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 
 			strncpy(selected_path, entry->path, selected_len - 1);
 			selected_path[selected_len - 1] = '\0';
-			dc_browser_show_loading(entry->name);
+			dc_browser_show_loading(entry->title);
 			return true;
 		}
 
