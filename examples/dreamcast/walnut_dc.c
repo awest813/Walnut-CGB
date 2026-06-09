@@ -298,7 +298,8 @@ static bool dc_run_game(const char *rom_path, const char *save_path,
 		gb_run_frame_dualfetch(&gb);
 
 #if ENABLE_SOUND
-		dc_audio_frame();
+		if (dc_audio_ready())
+			dc_audio_frame();
 #endif
 
 		if (fast_mode_timer > 1) {

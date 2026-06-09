@@ -4,6 +4,7 @@
  * Licensed under the MIT License.
  */
 
+#include <stdbool.h>
 #include <string.h>
 
 #include <kos.h>
@@ -13,14 +14,16 @@
 #define MINIGB_APU_AUDIO_FORMAT_S16SYS
 #include "../sdl2/minigb_apu/minigb_apu.h"
 
-#define DC_AUDIO_RING_SAMPLES 8192
+#define DC_AUDIO_RING_SAMPLES 16384
+#define DC_AUDIO_STEREO_FRAME_BYTES (sizeof(int16_t) * AUDIO_CHANNELS)
 
 static struct minigb_apu_ctx apu;
-static snd_stream_hnd_t stream;
+static snd_stream_hnd_t stream = SND_STREAM_INVALID;
+static bool audio_active;
 static int16_t ring[DC_AUDIO_RING_SAMPLES * 2];
 static unsigned int ring_read;
 static unsigned int ring_write;
-static int16_t stream_buf[4096 * 2];
+static int16_t stream_buf[4096 * 2] __attribute__((aligned(32)));
 
 static unsigned int dc_audio_ring_used(void)
 {
@@ -60,15 +63,22 @@ static unsigned int dc_audio_ring_pop(int16_t *dst, unsigned int count)
 	return popped;
 }
 
+static void dc_audio_ring_make_room(unsigned int frames)
+{
+	while (dc_audio_ring_free() < frames && ring_read != ring_write)
+		ring_read = (ring_read + 1) % DC_AUDIO_RING_SAMPLES;
+}
+
 static void *dc_audio_stream_callback(snd_stream_hnd_t hnd, int smp_req, int *smp_recv)
 {
-	const int frames_requested = smp_req / 2;
-	int frames_written = 0;
+	const unsigned int frames_requested = (unsigned int)smp_req / DC_AUDIO_STEREO_FRAME_BYTES;
+	unsigned int frames_written;
+
 	(void)hnd;
 
 	memset(stream_buf, 0, sizeof(stream_buf));
-	frames_written = (int)dc_audio_ring_pop(stream_buf, (unsigned int)frames_requested);
-	*smp_recv = frames_written * 2;
+	frames_written = dc_audio_ring_pop(stream_buf, frames_requested);
+	*smp_recv = (int)(frames_written * DC_AUDIO_STEREO_FRAME_BYTES);
 	return stream_buf;
 }
 
@@ -76,6 +86,7 @@ int dc_audio_init(void)
 {
 	ring_read = 0;
 	ring_write = 0;
+	audio_active = false;
 	minigb_apu_audio_init(&apu);
 
 	snd_stream_init();
@@ -84,11 +95,14 @@ int dc_audio_init(void)
 		return -1;
 
 	snd_stream_start(stream, AUDIO_SAMPLE_RATE, 1);
+	audio_active = true;
 	return 0;
 }
 
 void dc_audio_shutdown(void)
 {
+	audio_active = false;
+
 	if (stream != SND_STREAM_INVALID) {
 		snd_stream_stop(stream);
 		snd_stream_destroy(stream);
@@ -96,14 +110,20 @@ void dc_audio_shutdown(void)
 	}
 }
 
+bool dc_audio_ready(void)
+{
+	return audio_active;
+}
+
 void dc_audio_frame(void)
 {
 	int16_t frame_buf[AUDIO_SAMPLES_TOTAL];
-	unsigned int samples = AUDIO_SAMPLES;
+	const unsigned int samples = AUDIO_SAMPLES;
 
-	if (dc_audio_ring_free() < samples)
+	if (!audio_active || stream == SND_STREAM_INVALID)
 		return;
 
+	dc_audio_ring_make_room(samples);
 	minigb_apu_audio_callback(&apu, frame_buf);
 	dc_audio_ring_push(frame_buf, samples);
 	snd_stream_poll(stream);
