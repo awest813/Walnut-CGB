@@ -18,6 +18,74 @@ void dc_input_init(void)
 	previous_buttons = 0xFFFF;
 }
 
+int dc_input_axis(bool dpad_negative, bool dpad_positive, int16_t analog,
+		  int threshold)
+{
+	if (dpad_negative && !dpad_positive)
+		return -1;
+	if (dpad_positive && !dpad_negative)
+		return 1;
+	if (analog < -threshold)
+		return -1;
+	if (analog > threshold)
+		return 1;
+
+	return 0;
+}
+
+bool dc_input_repeat(bool pressed, int *timer)
+{
+	if (!pressed) {
+		*timer = 0;
+		return false;
+	}
+
+	if (*timer <= 0) {
+		*timer = DC_INPUT_REPEAT_DELAY;
+		return true;
+	}
+
+	if (--(*timer) == 0) {
+		*timer = DC_INPUT_REPEAT_RATE;
+		return true;
+	}
+
+	return false;
+}
+
+int dc_input_repeat_axis(int axis, int *timer, int *last_axis)
+{
+	if (axis == 0) {
+		*timer = 0;
+		*last_axis = 0;
+		return 0;
+	}
+
+	if (axis != *last_axis) {
+		*timer = 0;
+		*last_axis = axis;
+	}
+
+	if (!dc_input_repeat(true, timer))
+		return 0;
+
+	return axis;
+}
+
+int dc_input_axis_edge(int axis, int *last_axis)
+{
+	if (axis == 0) {
+		*last_axis = 0;
+		return 0;
+	}
+
+	if (axis == *last_axis)
+		return 0;
+
+	*last_axis = axis;
+	return axis;
+}
+
 static uint8_t dc_buttons_to_joypad(uint32_t buttons)
 {
 	uint8_t joypad = 0xFF;

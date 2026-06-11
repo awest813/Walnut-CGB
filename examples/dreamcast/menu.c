@@ -11,6 +11,7 @@
 #include <dc/maple/controller.h>
 
 #include "display.h"
+#include "input.h"
 #include "menu.h"
 #include "palette.h"
 #include "settings.h"
@@ -25,11 +26,7 @@
 #define DC_MENU_LIST_TOP       120
 
 #define DC_CONTROLS_LINE_HEIGHT 20
-#define DC_MENU_REPEAT_DELAY   18
-#define DC_MENU_REPEAT_RATE    4
-#define DC_MENU_ANALOG_THRESH  64
-#define DC_MENU_FRAME_MS       16
-#define DC_MENU_SPLASH_MS      2500
+#define DC_MENU_SPLASH_MS       2500
 
 struct dc_menu_input
 {
@@ -50,26 +47,6 @@ struct dc_menu_list
 
 static dc_settings_apply_cb settings_apply_cb;
 
-static bool dc_menu_repeat(bool pressed, int *timer)
-{
-	if (!pressed) {
-		*timer = 0;
-		return false;
-	}
-
-	if (*timer <= 0) {
-		*timer = DC_MENU_REPEAT_DELAY;
-		return true;
-	}
-
-	if (--(*timer) == 0) {
-		*timer = DC_MENU_REPEAT_RATE;
-		return true;
-	}
-
-	return false;
-}
-
 static void dc_menu_poll_input(struct dc_menu_input *input)
 {
 	maple_device_t *controller = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
@@ -78,7 +55,7 @@ static void dc_menu_poll_input(struct dc_menu_input *input)
 	cont_state_t *pad;
 	uint32_t buttons;
 	uint32_t changed;
-	bool up, down;
+	int vert;
 
 	memset(input, 0, sizeof(*input));
 	if (!controller)
@@ -91,11 +68,12 @@ static void dc_menu_poll_input(struct dc_menu_input *input)
 	buttons = pad->buttons;
 	changed = buttons ^ previous_buttons;
 
-	up = (buttons & CONT_DPAD_UP) || pad->joyy < -DC_MENU_ANALOG_THRESH;
-	down = (buttons & CONT_DPAD_DOWN) || pad->joyy > DC_MENU_ANALOG_THRESH;
+	vert = dc_input_axis((buttons & CONT_DPAD_UP) != 0,
+			     (buttons & CONT_DPAD_DOWN) != 0, pad->joyy,
+			     DC_INPUT_ANALOG_THRESHOLD);
 
-	input->up = dc_menu_repeat(up, &t_up);
-	input->down = dc_menu_repeat(down, &t_down);
+	input->up = dc_input_repeat(vert < 0, &t_up);
+	input->down = dc_input_repeat(vert > 0, &t_down);
 
 	if ((buttons & CONT_A) && (changed & CONT_A))
 		input->select = true;
@@ -189,8 +167,8 @@ static int dc_menu_run_list(struct dc_menu_list *menu, const char *footer)
 			return menu->selected;
 
 		elapsed = timer_ms_gettime64() - frame_start;
-		if (elapsed < DC_MENU_FRAME_MS)
-			timer_spin((int)(DC_MENU_FRAME_MS - elapsed));
+		if (elapsed < DC_INPUT_FRAME_MS)
+			timer_spin((int)(DC_INPUT_FRAME_MS - elapsed));
 	}
 }
 
@@ -199,7 +177,7 @@ static void dc_menu_draw_splash(uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDT
 {
 	dc_ui_clear(screen, DC_UI_COLOR_BG);
 	dc_ui_fill_rect(screen, 0, 180, DC_SCREEN_WIDTH, 4, DC_UI_COLOR_ACCENT);
-	dc_ui_draw_text(screen, 168, 200, "WALNUT-CGB", DC_UI_COLOR_TITLE, DC_UI_COLOR_BG);
+	dc_ui_draw_text(screen, 176, 200, "PocketDC", DC_UI_COLOR_TITLE, DC_UI_COLOR_BG);
 	dc_ui_draw_text(screen, 120, 232, "Game Boy / Game Boy Color",
 			DC_UI_COLOR_FG, DC_UI_COLOR_BG);
 	dc_ui_draw_text(screen, 168, 264, "Dreamcast Edition", DC_UI_COLOR_DIM,
@@ -233,8 +211,8 @@ bool dc_start_menu_run(void)
 			return true;
 
 		elapsed = timer_ms_gettime64() - frame_start;
-		if (elapsed < DC_MENU_FRAME_MS)
-			timer_spin((int)(DC_MENU_FRAME_MS - elapsed));
+		if (elapsed < DC_INPUT_FRAME_MS)
+			timer_spin((int)(DC_INPUT_FRAME_MS - elapsed));
 	}
 }
 
@@ -244,13 +222,13 @@ void dc_menu_show_message(const char *title, const char *message, int duration_m
 	const uint64_t end_time = timer_ms_gettime64() + (uint64_t)duration_ms;
 
 	dc_ui_clear(screen, DC_UI_COLOR_BG);
-	dc_ui_draw_header(screen, title ? title : "Walnut-CGB", NULL);
+	dc_ui_draw_header(screen, title ? title : "PocketDC", NULL);
 	dc_ui_draw_text(screen, 120, 220, message ? message : "", DC_UI_COLOR_FG,
 			DC_UI_COLOR_BG);
 
 	while (timer_ms_gettime64() < end_time) {
 		dc_video_present_screen(screen);
-		timer_spin(DC_MENU_FRAME_MS);
+		timer_spin(DC_INPUT_FRAME_MS);
 	}
 }
 
@@ -263,7 +241,7 @@ enum dc_main_menu_action dc_main_menu_run(void)
 		"Exit"
 	};
 	struct dc_menu_list menu = {
-		.title = "Walnut-CGB",
+		.title = "PocketDC",
 		.subtitle = "Main Menu",
 		.items = items,
 		.count = 4,
@@ -490,8 +468,8 @@ void dc_controls_menu_run(void)
 		}
 
 		elapsed = timer_ms_gettime64() - frame_start;
-		if (elapsed < DC_MENU_FRAME_MS)
-			timer_spin((int)(DC_MENU_FRAME_MS - elapsed));
+		if (elapsed < DC_INPUT_FRAME_MS)
+			timer_spin((int)(DC_INPUT_FRAME_MS - elapsed));
 	}
 }
 
@@ -583,16 +561,24 @@ static void dc_settings_draw_value_screen(const struct dc_settings *settings,
 	dc_toast_draw(screen);
 }
 
+static bool dc_settings_row_is_toggle(int row)
+{
+	return row == 3 || row == 4 || row == 5;
+}
+
 static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_row,
 				   bool *done)
 {
 	maple_device_t *controller = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
 	static uint32_t previous_buttons = 0xFFFF;
-	static int t_up, t_down, t_left, t_right;
+	static int t_up, t_down, t_horiz, last_horiz, horiz_edge_latch;
 	cont_state_t *pad;
 	uint32_t buttons;
 	uint32_t changed;
-	bool up, down, left, right;
+	int vert;
+	int horiz;
+	int axis_step;
+	int horiz_edge;
 	bool changed_value = false;
 
 	*done = false;
@@ -606,27 +592,31 @@ static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_r
 	buttons = pad->buttons;
 	changed = buttons ^ previous_buttons;
 
-	up = (buttons & CONT_DPAD_UP) || pad->joyy < -DC_MENU_ANALOG_THRESH;
-	down = (buttons & CONT_DPAD_DOWN) || pad->joyy > DC_MENU_ANALOG_THRESH;
-	left = (buttons & CONT_DPAD_LEFT) || pad->joyx < -DC_MENU_ANALOG_THRESH;
-	right = (buttons & CONT_DPAD_RIGHT) || pad->joyx > DC_MENU_ANALOG_THRESH;
+	vert = dc_input_axis((buttons & CONT_DPAD_UP) != 0,
+			     (buttons & CONT_DPAD_DOWN) != 0, pad->joyy,
+			     DC_INPUT_ANALOG_THRESHOLD);
+	horiz = dc_input_axis((buttons & CONT_DPAD_LEFT) != 0,
+			      (buttons & CONT_DPAD_RIGHT) != 0, pad->joyx,
+			      DC_INPUT_ANALOG_THRESHOLD);
 
-	if (dc_menu_repeat(up, &t_up)) {
+	if (dc_input_repeat(vert < 0, &t_up)) {
 		(*selected_row)--;
 		if (*selected_row < 0)
 			*selected_row = DC_SETTINGS_ROW_COUNT - 1;
 		changed_value = true;
-	}
-
-	if (dc_menu_repeat(down, &t_down)) {
+	} else if (dc_input_repeat(vert > 0, &t_down)) {
 		(*selected_row)++;
 		if (*selected_row >= DC_SETTINGS_ROW_COUNT)
 			*selected_row = 0;
 		changed_value = true;
 	}
 
-	if (dc_menu_repeat(left, &t_left) || dc_menu_repeat(right, &t_right)) {
-		const int inc = right ? 1 : -1;
+	horiz_edge = dc_input_axis_edge(horiz, &horiz_edge_latch);
+	axis_step = dc_settings_row_is_toggle(*selected_row) ?
+		    horiz_edge :
+		    dc_input_repeat_axis(horiz, &t_horiz, &last_horiz);
+	if (axis_step != 0) {
+		const int inc = axis_step;
 		char toast_line[48];
 
 		switch (*selected_row) {
@@ -721,7 +711,8 @@ static bool dc_settings_poll_input(struct dc_settings *settings, int *selected_r
 	return changed_value;
 
 release:
-	t_up = t_down = t_left = t_right = 0;
+	t_up = t_down = 0;
+	t_horiz = last_horiz = horiz_edge_latch = 0;
 	previous_buttons = 0xFFFF;
 	return false;
 }
@@ -760,7 +751,7 @@ bool dc_settings_menu_run(struct dc_settings *settings)
 			dirty = true;
 
 		elapsed = timer_ms_gettime64() - frame_start;
-		if (elapsed < DC_MENU_FRAME_MS)
-			timer_spin((int)(DC_MENU_FRAME_MS - elapsed));
+		if (elapsed < DC_INPUT_FRAME_MS)
+			timer_spin((int)(DC_INPUT_FRAME_MS - elapsed));
 	}
 }

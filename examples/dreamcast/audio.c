@@ -4,12 +4,13 @@
  * Licensed under the MIT License.
  */
 
-#include <limits.h>
 #include <stdbool.h>
 #include <string.h>
 
 #include <kos.h>
 #include <dc/sound/stream.h>
+
+#include "../../extras/audio_processor/audio_processor.h"
 
 #define AUDIO_SAMPLE_RATE 44100
 #define MINIGB_APU_AUDIO_FORMAT_S16SYS
@@ -25,8 +26,7 @@ static int16_t ring[DC_AUDIO_RING_MAX_SAMPLES * 2];
 static unsigned int ring_capacity = 16384;
 static unsigned int ring_read;
 static unsigned int ring_write;
-static uint8_t master_volume = DC_SETTINGS_VOLUME_DEFAULT;
-static bool audio_muted;
+static struct audio_processor processor;
 static int16_t stream_buf[4096 * 2] __attribute__((aligned(32)));
 
 static unsigned int dc_audio_ring_capacity_for_mode(enum dc_audio_buffer_mode mode)
@@ -39,30 +39,6 @@ static unsigned int dc_audio_ring_capacity_for_mode(enum dc_audio_buffer_mode mo
 	case DC_AUDIO_BUFFER_NORMAL:
 	default:
 		return 16384;
-	}
-}
-
-static void dc_audio_apply_gain(int16_t *samples, unsigned int count)
-{
-	unsigned int i;
-
-	if (audio_muted || master_volume == 0) {
-		memset(samples, 0, count * DC_AUDIO_STEREO_FRAME_BYTES);
-		return;
-	}
-
-	if (master_volume == 100)
-		return;
-
-	for (i = 0; i < count * AUDIO_CHANNELS; i++) {
-		int32_t sample = samples[i];
-
-		sample = (sample * (int32_t)master_volume) / 100;
-		if (sample > INT16_MAX)
-			sample = INT16_MAX;
-		if (sample < INT16_MIN)
-			sample = INT16_MIN;
-		samples[i] = (int16_t)sample;
 	}
 }
 
@@ -107,7 +83,7 @@ static unsigned int dc_audio_ring_pop(int16_t *dst, unsigned int count)
 		popped++;
 	}
 
-	dc_audio_apply_gain(dst, popped);
+	audio_processor_process_s16_stereo(&processor, dst, popped);
 	return popped;
 }
 
@@ -134,6 +110,7 @@ int dc_audio_init(void)
 {
 	dc_audio_ring_reset();
 	audio_active = false;
+	audio_processor_init(&processor);
 	minigb_apu_audio_init(&apu);
 
 	snd_stream_init();
@@ -163,11 +140,8 @@ void dc_audio_configure(uint8_t volume, bool muted,
 	const unsigned int new_capacity =
 		dc_audio_ring_capacity_for_mode(buffer_mode);
 
-	if (volume > DC_SETTINGS_VOLUME_MAX)
-		volume = DC_SETTINGS_VOLUME_MAX;
-
-	master_volume = volume;
-	audio_muted = muted;
+	audio_processor_set_volume(&processor, volume);
+	audio_processor_set_muted(&processor, muted);
 
 	if (new_capacity != ring_capacity) {
 		ring_capacity = new_capacity;

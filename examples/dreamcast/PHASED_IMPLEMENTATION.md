@@ -26,6 +26,7 @@ examples/dreamcast/
 ├── video.c / video.h          # PVR texture upload, scale modes, overlays
 ├── display.c / display.h      # VGA/TV/auto video output
 ├── audio.c / audio.h          # snd_stream + MiniGB APU bridge
+│   (uses extras/audio_processor/ for master volume and mute)
 ├── input.c / input.h          # Maple controller → joypad
 ├── rom_browser.c / rom_browser.h  # ROM/save file I/O and ROM library UI
 ├── cover.c / cover.h          # W555 box art + procedural placeholders
@@ -41,6 +42,7 @@ examples/dreamcast/
 ```
 
 MiniGB APU is compiled from `examples/sdl2/minigb_apu/` (shared, not duplicated).
+Master volume and mute run through `extras/audio_processor/` (MIT).
 
 ## Compile-Time Defines (SH-4)
 

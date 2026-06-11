@@ -13,8 +13,9 @@ PocketDC is a Dreamcast-only fork of Walnut-CGB. It packages the Game Boy / Game
 - Maple controller input, PVR video output, and AICA audio
 - Optional boot-disc packaging for CD-R, GD-ROM, SD, IDE, and dcload workflows
 - Bundled MiniGB APU for Dreamcast audio output
+- MIT-licensed master volume processor in `extras/audio_processor/`
 
-Sound emulation is not built in. When `ENABLE_SOUND` is set, PocketDC uses the bundled MiniGB APU in `examples/sdl2/minigb_apu`.
+Sound emulation is not built in. When `ENABLE_SOUND` is set, PocketDC uses the bundled MiniGB APU in `examples/sdl2/minigb_apu`, with post-processing from `extras/audio_processor/`.
 
 ## Quick start
 

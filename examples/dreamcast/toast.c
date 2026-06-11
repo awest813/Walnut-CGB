@@ -18,6 +18,9 @@ void dc_toast_show(const char *message, int duration_ms)
 	if (!message || message[0] == '\0')
 		return;
 
+	if (duration_ms < 0)
+		duration_ms = 0;
+
 	strncpy(toast_message, message, sizeof(toast_message) - 1);
 	toast_message[sizeof(toast_message) - 1] = '\0';
 	toast_expires = timer_ms_gettime64() + (uint64_t)duration_ms;
