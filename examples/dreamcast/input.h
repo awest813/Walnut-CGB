@@ -8,8 +8,13 @@
 #define DC_INPUT_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "../../walnut_cgb.h"
+
+#define DC_INPUT_ANALOG_THRESHOLD 64
+#define DC_INPUT_REPEAT_DELAY     18
+#define DC_INPUT_REPEAT_RATE      4
 
 struct dc_input_state
 {
@@ -25,5 +30,21 @@ struct dc_input_state
 
 void dc_input_init(void);
 void dc_input_poll(struct dc_input_state *state, struct gb_s *gb);
+
+/**
+ * Resolve one navigation axis to -1, 0, or +1.
+ * Digital d-pad wins over analog so mixed input cannot fire both directions.
+ */
+int dc_input_axis(bool dpad_negative, bool dpad_positive, int16_t analog,
+		  int threshold);
+
+/** Hold-to-repeat helper for menu and browser navigation. */
+bool dc_input_repeat(bool pressed, int *timer);
+
+/**
+ * Repeat on a resolved axis; resets when the axis direction changes.
+ * Returns the active axis (-1, 0, or +1) when a repeat event fires.
+ */
+int dc_input_repeat_axis(int axis, int *timer, int *last_axis);
 
 #endif /* DC_INPUT_H */

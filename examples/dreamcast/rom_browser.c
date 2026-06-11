@@ -13,6 +13,7 @@
 #include <kos.h>
 #include <dc/maple/controller.h>
 
+#include "input.h"
 #include "rom_browser.h"
 #include "toast.h"
 #include "ui.h"
@@ -27,10 +28,7 @@
 #define DC_BROWSER_HELP_Y      56
 #define DC_BROWSER_GRID_CELL_W 120
 #define DC_BROWSER_GRID_CELL_H 108
-#define DC_REPEAT_DELAY_FRAMES 18
-#define DC_REPEAT_RATE_FRAMES  4
-#define DC_ANALOG_THRESHOLD    64
-#define DC_FRAME_MS            16
+#define DC_FRAME_MS 16
 
 struct dc_browser_root
 {
@@ -123,11 +121,39 @@ const char *dc_browser_device_label(const struct dc_browser *browser)
 	return dc_browser_roots[browser->root_index].label;
 }
 
+static void dc_browser_update_scroll(struct dc_browser *browser);
+static void dc_browser_move_vertical(struct dc_browser *browser, int direction);
+static void dc_browser_move_horizontal(struct dc_browser *browser, int direction);
+
+static void dc_browser_clamp_selected(struct dc_browser *browser)
+{
+	if (browser->count <= 0) {
+		browser->selected = 0;
+		browser->scroll = 0;
+		return;
+	}
+
+	if (browser->selected < 0)
+		browser->selected = 0;
+	if (browser->selected >= browser->count)
+		browser->selected = browser->count - 1;
+}
+
 int dc_browser_scan(struct dc_browser *browser)
 {
 	DIR *dir;
 	struct dirent *entry;
+	char previous_path[sizeof(browser->entries[0].path)];
 	int count = 0;
+	int previous_selected = browser->selected;
+
+	previous_path[0] = '\0';
+	if (browser->count > 0 && browser->selected >= 0 &&
+	    browser->selected < browser->count) {
+		strncpy(previous_path, browser->entries[browser->selected].path,
+			sizeof(previous_path) - 1);
+		previous_path[sizeof(previous_path) - 1] = '\0';
+	}
 
 	browser->count = 0;
 	browser->selected = 0;
@@ -173,6 +199,27 @@ int dc_browser_scan(struct dc_browser *browser)
 	browser->count = count;
 	qsort(browser->entries, (size_t)browser->count, sizeof(browser->entries[0]),
 	      dc_browser_entry_compare);
+
+	if (previous_path[0] != '\0') {
+		int i;
+		bool found = false;
+
+		for (i = 0; i < browser->count; i++) {
+			if (strcmp(browser->entries[i].path, previous_path) == 0) {
+				browser->selected = i;
+				found = true;
+				break;
+			}
+		}
+
+		if (!found && previous_selected < browser->count)
+			browser->selected = previous_selected;
+	} else if (previous_selected < browser->count) {
+		browser->selected = previous_selected;
+	}
+
+	dc_browser_clamp_selected(browser);
+	dc_browser_update_scroll(browser);
 	return count;
 }
 
@@ -352,31 +399,6 @@ void dc_browser_show_loading(const char *rom_name)
 	}
 }
 
-/*
- * Edge press plus auto-repeat: emits immediately when first held, pauses for
- * an initial delay, then fires at a steady rate while the direction is held.
- * Assumes a fixed poll cadence (see DC_FRAME_MS in dc_browser_run).
- */
-static bool dc_repeat(bool pressed, int *timer)
-{
-	if (!pressed) {
-		*timer = 0;
-		return false;
-	}
-
-	if (*timer <= 0) {
-		*timer = DC_REPEAT_DELAY_FRAMES;
-		return true;
-	}
-
-	if (--(*timer) == 0) {
-		*timer = DC_REPEAT_RATE_FRAMES;
-		return true;
-	}
-
-	return false;
-}
-
 static void dc_browser_poll_input(struct dc_browser *browser,
 				  struct dc_browser_input *input)
 {
@@ -386,7 +408,8 @@ static void dc_browser_poll_input(struct dc_browser *browser,
 	cont_state_t *pad;
 	uint32_t buttons;
 	uint32_t changed;
-	bool up, down, left, right;
+	int vert;
+	int horiz;
 
 	(void)browser;
 	memset(input, 0, sizeof(*input));
@@ -400,16 +423,17 @@ static void dc_browser_poll_input(struct dc_browser *browser,
 	buttons = pad->buttons;
 	changed = buttons ^ previous_buttons;
 
-	/* D-pad or analog stick drive navigation, with hold-to-repeat. */
-	up    = (buttons & CONT_DPAD_UP)    || pad->joyy < -DC_ANALOG_THRESHOLD;
-	down  = (buttons & CONT_DPAD_DOWN)  || pad->joyy >  DC_ANALOG_THRESHOLD;
-	left  = (buttons & CONT_DPAD_LEFT)  || pad->joyx < -DC_ANALOG_THRESHOLD;
-	right = (buttons & CONT_DPAD_RIGHT) || pad->joyx >  DC_ANALOG_THRESHOLD;
+	vert = dc_input_axis((buttons & CONT_DPAD_UP) != 0,
+			     (buttons & CONT_DPAD_DOWN) != 0, pad->joyy,
+			     DC_INPUT_ANALOG_THRESHOLD);
+	horiz = dc_input_axis((buttons & CONT_DPAD_LEFT) != 0,
+			      (buttons & CONT_DPAD_RIGHT) != 0, pad->joyx,
+			      DC_INPUT_ANALOG_THRESHOLD);
 
-	input->up = dc_repeat(up, &t_up);
-	input->down = dc_repeat(down, &t_down);
-	input->page_up = dc_repeat(left, &t_left);
-	input->page_down = dc_repeat(right, &t_right);
+	input->up = dc_input_repeat(vert < 0, &t_up);
+	input->down = dc_input_repeat(vert > 0, &t_down);
+	input->page_up = dc_input_repeat(horiz < 0, &t_left);
+	input->page_down = dc_input_repeat(horiz > 0, &t_right);
 
 	/* Action buttons stay edge-triggered. */
 	if ((buttons & CONT_A) && (changed & CONT_A))
@@ -437,6 +461,59 @@ static int dc_browser_visible_slots(const struct dc_browser *browser)
 		return DC_BROWSER_GRID_COLS * DC_BROWSER_GRID_ROWS;
 
 	return DC_BROWSER_LIST_LINES;
+}
+
+static void dc_browser_move_vertical(struct dc_browser *browser, int direction)
+{
+	if (browser->count <= 0)
+		return;
+
+	if (browser->view == DC_BROWSER_VIEW_LIST) {
+		browser->selected += direction;
+		if (browser->selected < 0)
+			browser->selected = browser->count - 1;
+		else if (browser->selected >= browser->count)
+			browser->selected = 0;
+		return;
+	}
+
+	{
+		const int cols = DC_BROWSER_GRID_COLS;
+		const int col = browser->selected % cols;
+		int row = browser->selected / cols;
+		const int rows = (browser->count + cols - 1) / cols;
+
+		row += direction;
+		if (row < 0)
+			row = rows - 1;
+		else if (row >= rows)
+			row = 0;
+
+		browser->selected = row * cols + col;
+		if (browser->selected >= browser->count)
+			browser->selected = browser->count - 1;
+	}
+}
+
+static void dc_browser_move_horizontal(struct dc_browser *browser, int direction)
+{
+	if (browser->count <= 0)
+		return;
+
+	if (browser->view == DC_BROWSER_VIEW_LIST) {
+		browser->selected += direction * dc_browser_visible_slots(browser);
+		if (browser->selected < 0)
+			browser->selected = 0;
+		else if (browser->selected >= browser->count)
+			browser->selected = browser->count - 1;
+		return;
+	}
+
+	browser->selected += direction;
+	if (browser->selected < 0)
+		browser->selected = browser->count - 1;
+	else if (browser->selected >= browser->count)
+		browser->selected = 0;
 }
 
 static void dc_browser_update_scroll(struct dc_browser *browser)
@@ -518,6 +595,7 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 		if (input.toggle_view) {
 			browser->view = browser->view == DC_BROWSER_VIEW_GRID ?
 					DC_BROWSER_VIEW_LIST : DC_BROWSER_VIEW_GRID;
+			dc_browser_clamp_selected(browser);
 			dc_browser_update_scroll(browser);
 			dc_toast_show(browser->view == DC_BROWSER_VIEW_GRID ?
 					      "Grid view" : "List view",
@@ -526,38 +604,18 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 		}
 
 		if (input.up && browser->count > 0) {
-			browser->selected -= browser->view == DC_BROWSER_VIEW_GRID ?
-					       DC_BROWSER_GRID_COLS : 1;
-			if (browser->selected < 0)
-				browser->selected = browser->count - 1;
+			dc_browser_move_vertical(browser, -1);
 			dirty = true;
-		}
-
-		if (input.down && browser->count > 0) {
-			browser->selected += browser->view == DC_BROWSER_VIEW_GRID ?
-					       DC_BROWSER_GRID_COLS : 1;
-			if (browser->selected >= browser->count)
-				browser->selected = 0;
+		} else if (input.down && browser->count > 0) {
+			dc_browser_move_vertical(browser, 1);
 			dirty = true;
 		}
 
 		if (input.page_up && browser->count > 0) {
-			if (browser->view == DC_BROWSER_VIEW_GRID)
-				browser->selected--;
-			else
-				browser->selected -= dc_browser_visible_slots(browser);
-			if (browser->selected < 0)
-				browser->selected = 0;
+			dc_browser_move_horizontal(browser, -1);
 			dirty = true;
-		}
-
-		if (input.page_down && browser->count > 0) {
-			if (browser->view == DC_BROWSER_VIEW_GRID)
-				browser->selected++;
-			else
-				browser->selected += dc_browser_visible_slots(browser);
-			if (browser->selected >= browser->count)
-				browser->selected = browser->count - 1;
+		} else if (input.page_down && browser->count > 0) {
+			dc_browser_move_horizontal(browser, 1);
 			dirty = true;
 		}
 
