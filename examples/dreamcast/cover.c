@@ -307,6 +307,9 @@ void dc_cover_draw(uint16_t screen[DC_SCREEN_HEIGHT][DC_SCREEN_WIDTH],
 	int row;
 	int col;
 
+	if (!screen || !pixels || w <= 0 || h <= 0)
+		return;
+
 	for (row = 0; row < h; row++) {
 		const int src_y = row * DC_COVER_HEIGHT / h;
 		const int dst_y = y + row;

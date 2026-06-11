@@ -99,36 +99,68 @@ uint8_t gb_rom_read(struct gb_s *gb, const uint_fast32_t addr)
 {
 	const struct dc_priv *p = gb->direct.priv;
 
+	if (!p->rom || addr >= p->rom_size)
+		return 0xFF;
+
 	return p->rom[addr];
 }
 
 uint16_t gb_rom_read_16bit(struct gb_s *gb, const uint_fast32_t addr)
 {
-	const uint8_t *src = &((const struct dc_priv *)gb->direct.priv)->rom[addr];
+	const struct dc_priv *p = gb->direct.priv;
 
-	if ((uintptr_t)src & 1)
-		return (uint16_t)src[0] | ((uint16_t)src[1] << 8);
+	if (!p->rom || addr >= p->rom_size)
+		return 0xFFFF;
+	if (addr + 1 >= p->rom_size)
+		return (uint16_t)p->rom[addr];
 
-	return *(const uint16_t *)src;
+	{
+		const uint8_t *src = &p->rom[addr];
+
+		if ((uintptr_t)src & 1)
+			return (uint16_t)src[0] | ((uint16_t)src[1] << 8);
+
+		return *(const uint16_t *)src;
+	}
 }
 
 uint32_t gb_rom_read_32bit(struct gb_s *gb, const uint_fast32_t addr)
 {
-	const uint8_t *src = &((const struct dc_priv *)gb->direct.priv)->rom[addr];
+	const struct dc_priv *p = gb->direct.priv;
 
-	if ((uintptr_t)src & 3) {
-		return (uint32_t)src[0] |
-		       ((uint32_t)src[1] << 8) |
-		       ((uint32_t)src[2] << 16) |
-		       ((uint32_t)src[3] << 24);
+	if (!p->rom || addr >= p->rom_size)
+		return 0xFFFFFFFF;
+	if (addr + 3 >= p->rom_size) {
+		const uint8_t *src = &p->rom[addr];
+		uint32_t value = 0;
+		size_t i;
+
+		for (i = 0; i < 4 && addr + i < p->rom_size; i++)
+			value |= (uint32_t)src[i] << (i * 8);
+
+		return value;
 	}
 
-	return *(const uint32_t *)src;
+	{
+		const uint8_t *src = &p->rom[addr];
+
+		if ((uintptr_t)src & 3) {
+			return (uint32_t)src[0] |
+			       ((uint32_t)src[1] << 8) |
+			       ((uint32_t)src[2] << 16) |
+			       ((uint32_t)src[3] << 24);
+		}
+
+		return *(const uint32_t *)src;
+	}
 }
 
 uint8_t gb_cart_ram_read(struct gb_s *gb, const uint_fast32_t addr)
 {
 	const struct dc_priv *p = gb->direct.priv;
+
+	if (!p->cart_ram || addr >= p->save_size)
+		return 0xFF;
 
 	return p->cart_ram[addr];
 }
@@ -137,12 +169,18 @@ void gb_cart_ram_write(struct gb_s *gb, const uint_fast32_t addr, const uint8_t 
 {
 	struct dc_priv *p = gb->direct.priv;
 
+	if (!p->cart_ram || addr >= p->save_size)
+		return;
+
 	p->cart_ram[addr] = val;
 }
 
 uint8_t gb_bootrom_read(struct gb_s *gb, const uint_fast16_t addr)
 {
 	const struct dc_priv *p = gb->direct.priv;
+
+	if (!p->bootrom || addr >= DC_DMG_BOOTROM_SIZE)
+		return 0xFF;
 
 	return p->bootrom[addr];
 }
@@ -213,7 +251,9 @@ void gb_error(struct gb_s *gb, const enum gb_error_e gb_err, const uint16_t addr
 	if (p->save_size > 0 && p->save_path[0] != '\0')
 		dc_cart_ram_write_file(p->save_path, p->cart_ram, p->save_size);
 
-	printf("walnut-dc: emulator error %s\n", gb_err_str[gb_err]);
+	printf("walnut-dc: emulator error %s\n",
+	       (unsigned int)gb_err < GB_INVALID_MAX ? gb_err_str[gb_err] :
+						      gb_err_str[0]);
 	arch_exit();
 }
 
@@ -232,7 +272,7 @@ static int dc_load_bootrom(struct dc_priv *p)
 	}
 
 	size = ftell(f);
-	if (size <= 0) {
+	if (size != (long)DC_DMG_BOOTROM_SIZE) {
 		fclose(f);
 		return -1;
 	}
@@ -261,10 +301,8 @@ static int dc_init_emulator(struct gb_s *gb, struct dc_priv *p)
 
 	gb_ret = gb_init(gb, &gb_rom_read, &gb_rom_read_16bit, &gb_rom_read_32bit,
 			 &gb_cart_ram_read, &gb_cart_ram_write, &gb_error, p);
-	if (gb_ret != GB_INIT_NO_ERROR) {
-		printf("walnut-dc: gb_init failed (%d)\n", gb_ret);
-		return -1;
-	}
+	if (gb_ret != GB_INIT_NO_ERROR)
+		return (int)gb_ret;
 
 	if (dc_load_bootrom(p) == 0) {
 		gb_set_bootrom(gb, gb_bootrom_read);
@@ -276,8 +314,11 @@ static int dc_init_emulator(struct gb_s *gb, struct dc_priv *p)
 		return -1;
 	}
 
-	if (p->save_size > 0)
-		dc_cart_ram_read_file(p->save_path, &p->cart_ram, p->save_size);
+	if (p->save_size > 0 && dc_cart_ram_read_file(p->save_path, &p->cart_ram,
+						      p->save_size) != 0) {
+		printf("walnut-dc: unable to allocate cart RAM\n");
+		return -2;
+	}
 
 	{
 		time_t rawtime;
@@ -375,17 +416,32 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 
 	memset(&priv, 0, sizeof(priv));
 	if (dc_rom_load(&priv, rom_path) != 0) {
-		dc_menu_show_message("Load Failed", "Unable to open ROM file.", 1500);
+		dc_menu_show_message("Load Failed",
+				     "Unable to open or validate ROM file.",
+				     1500);
 		return menu_mode;
 	}
 
 	if (save_path && save_path[0] != '\0')
 		strncpy(priv.save_path, save_path, sizeof(priv.save_path) - 1);
 
-	if (dc_init_emulator(&gb, &priv) != 0) {
-		dc_menu_show_message("Load Failed", "Emulator init failed.", 1500);
-		dc_rom_unload(&priv);
-		return menu_mode;
+	{
+		const int init_err = dc_init_emulator(&gb, &priv);
+
+		if (init_err != 0) {
+			const char *message = "Emulator init failed.";
+
+			if (init_err == GB_INIT_INVALID_CHECKSUM)
+				message = "Invalid ROM checksum.";
+			else if (init_err == GB_INIT_CARTRIDGE_UNSUPPORTED)
+				message = "Unsupported cartridge type.";
+			else if (init_err == -2)
+				message = "Out of memory for save data.";
+
+			dc_menu_show_message("Load Failed", message, 1500);
+			dc_rom_unload(&priv);
+			return menu_mode;
+		}
 	}
 
 	dc_apply_settings_to_game(&gb, &priv);

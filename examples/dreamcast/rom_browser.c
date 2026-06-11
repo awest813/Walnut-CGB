@@ -144,15 +144,21 @@ int dc_browser_scan(struct dc_browser *browser)
 	DIR *dir;
 	struct dirent *entry;
 	char previous_path[sizeof(browser->entries[0].path)];
+	char previous_name[sizeof(browser->entries[0].name)];
 	int count = 0;
 	int previous_selected = browser->selected;
+	bool truncated = false;
 
 	previous_path[0] = '\0';
+	previous_name[0] = '\0';
 	if (browser->count > 0 && browser->selected >= 0 &&
 	    browser->selected < browser->count) {
 		strncpy(previous_path, browser->entries[browser->selected].path,
 			sizeof(previous_path) - 1);
 		previous_path[sizeof(previous_path) - 1] = '\0';
+		strncpy(previous_name, browser->entries[browser->selected].name,
+			sizeof(previous_name) - 1);
+		previous_name[sizeof(previous_name) - 1] = '\0';
 	}
 
 	browser->count = 0;
@@ -163,8 +169,8 @@ int dc_browser_scan(struct dc_browser *browser)
 	if (!dir)
 		return -1;
 
-	while ((entry = readdir(dir)) != NULL && count < DC_BROWSER_MAX_ENTRIES) {
-		struct dc_browser_entry *slot = &browser->entries[count];
+	while ((entry = readdir(dir)) != NULL) {
+		struct dc_browser_entry *slot;
 		const char *name = entry->d_name;
 
 		if (name[0] == '.')
@@ -172,26 +178,35 @@ int dc_browser_scan(struct dc_browser *browser)
 		if (!dc_has_rom_extension(name))
 			continue;
 
-		char save_path[256];
-
-		snprintf(slot->path, sizeof(slot->path), "%s/%s",
-			 browser->root_path, name);
-		strncpy(slot->name, name, sizeof(slot->name) - 1);
-		slot->name[sizeof(slot->name) - 1] = '\0';
-		slot->cover_ready = false;
-		slot->cover_from_file = false;
-		dc_rom_read_header(slot->path, slot->title, sizeof(slot->title),
-				   &slot->is_cgb, NULL);
-		slot->has_save = false;
-		if (dc_save_path_from_rom(slot->path, save_path, sizeof(save_path)) == 0) {
-			FILE *save_file = fopen(save_path, "rb");
-
-			if (save_file) {
-				slot->has_save = true;
-				fclose(save_file);
-			}
+		if (count >= DC_BROWSER_MAX_ENTRIES) {
+			truncated = true;
+			continue;
 		}
-		count++;
+
+		slot = &browser->entries[count];
+		{
+			char save_path[256];
+
+			snprintf(slot->path, sizeof(slot->path), "%s/%s",
+				 browser->root_path, name);
+			strncpy(slot->name, name, sizeof(slot->name) - 1);
+			slot->name[sizeof(slot->name) - 1] = '\0';
+			slot->cover_ready = false;
+			slot->cover_from_file = false;
+			dc_rom_read_header(slot->path, slot->title, sizeof(slot->title),
+					   &slot->is_cgb, NULL);
+			slot->has_save = false;
+			if (dc_save_path_from_rom(slot->path, save_path,
+						  sizeof(save_path)) == 0) {
+				FILE *save_file = fopen(save_path, "rb");
+
+				if (save_file) {
+					slot->has_save = true;
+					fclose(save_file);
+				}
+			}
+			count++;
+		}
 	}
 
 	closedir(dir);
@@ -212,6 +227,17 @@ int dc_browser_scan(struct dc_browser *browser)
 			}
 		}
 
+		if (!found && previous_name[0] != '\0') {
+			for (i = 0; i < browser->count; i++) {
+				if (strcasecmp(browser->entries[i].name,
+					       previous_name) == 0) {
+					browser->selected = i;
+					found = true;
+					break;
+				}
+			}
+		}
+
 		if (!found && previous_selected < browser->count)
 			browser->selected = previous_selected;
 	} else if (previous_selected < browser->count) {
@@ -220,6 +246,10 @@ int dc_browser_scan(struct dc_browser *browser)
 
 	dc_browser_clamp_selected(browser);
 	dc_browser_update_scroll(browser);
+
+	if (truncated)
+		dc_toast_show("ROM list truncated (128 max)", 2000);
+
 	return count;
 }
 
@@ -681,7 +711,7 @@ int dc_rom_load(struct dc_priv *priv, const char *rom_path)
 	}
 
 	size = ftell(f);
-	if (size <= 0 || size > (8 * 1024 * 1024)) {
+	if (size < (long)DC_ROM_HEADER_SIZE || size > (8 * 1024 * 1024)) {
 		fclose(f);
 		printf("walnut-dc: invalid ROM size (%ld)\n", size);
 		return -1;
@@ -702,6 +732,7 @@ int dc_rom_load(struct dc_priv *priv, const char *rom_path)
 	}
 
 	fclose(f);
+	priv->rom_size = (size_t)size;
 	strncpy(priv->rom_path, rom_path, sizeof(priv->rom_path) - 1);
 	priv->rom_path[sizeof(priv->rom_path) - 1] = '\0';
 
@@ -718,6 +749,7 @@ void dc_rom_unload(struct dc_priv *priv)
 
 	free(priv->rom);
 	priv->rom = NULL;
+	priv->rom_size = 0;
 	free(priv->cart_ram);
 	priv->cart_ram = NULL;
 	free(priv->bootrom);
