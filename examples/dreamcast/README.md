@@ -1,6 +1,6 @@
-# Walnut-CGB Dreamcast Example
+# PocketDC Dreamcast Example
 
-KallistiOS frontend for running Walnut-CGB on the Sega Dreamcast.
+KallistiOS frontend for running PocketDC on the Sega Dreamcast.
 
 ## Prerequisites
 
@@ -158,6 +158,6 @@ Phase 3 (ROM browser + disc packaging) is implemented. Phase 4 hardware validati
 
 ## Licensing
 
-Walnut-CGB is MIT licensed. MiniGB APU has its own license in `examples/sdl2/minigb_apu/LICENSE`. KOS requires attribution in distributed binaries.
+PocketDC is MIT licensed. MiniGB APU has its own license in `examples/sdl2/minigb_apu/LICENSE`. KOS requires attribution in distributed binaries.
 
 Do not ship copyrighted ROMs with homebrew releases.
