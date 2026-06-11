@@ -158,6 +158,6 @@ Phase 3 (ROM browser + disc packaging) is implemented. Phase 4 hardware validati
 
 ## Licensing
 
-PocketDC is MIT licensed. MiniGB APU has its own license in `examples/sdl2/minigb_apu/LICENSE`. KOS requires attribution in distributed binaries.
+PocketDC is MIT licensed. Post-emulation volume and mute processing lives in `extras/audio_processor/` (MIT). MiniGB APU has its own license in `examples/sdl2/minigb_apu/LICENSE`. KOS requires attribution in distributed binaries.
 
 Do not ship copyrighted ROMs with homebrew releases.

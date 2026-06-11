@@ -12,9 +12,10 @@
 
 TARGET = walnut-dc
 OBJS = walnut_dc.o video.o audio.o display.o cover.o input.o rom_browser.o palette.o ui.o \
-	menu.o settings.o toast.o ../sdl2/minigb_apu/minigb_apu.o
+	menu.o settings.o toast.o ../sdl2/minigb_apu/minigb_apu.o \
+	../../extras/audio_processor/audio_processor.o
 
-KOS_CFLAGS += -I../../ -I../sdl2/minigb_apu
+KOS_CFLAGS += -I../../ -I../sdl2/minigb_apu -I../../extras/audio_processor
 KOS_CFLAGS += -DWALNUT_GB_IS_LITTLE_ENDIAN=1
 KOS_CFLAGS += -DWALNUT_GB_32BIT_DMA=1 -DWALNUT_GB_16BIT_DMA=0
 KOS_CFLAGS += -DWALNUT_GB_32BIT_ALIGNED=1 -DWALNUT_GB_USE_INTRINSICS=1
