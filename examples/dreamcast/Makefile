@@ -23,4 +23,7 @@ KOS_CFLAGS += -DENABLE_LCD=1 -DENABLE_SOUND=1 -DWALNUT_GB_12_COLOUR=1
 KOS_CFLAGS += -DENABLE_SOUND_MINIGB -DMINIGB_APU_AUDIO_FORMAT_S16SYS
 KOS_CFLAGS += -DAUDIO_SAMPLE_RATE=44100
 
+../../extras/audio_processor/audio_processor.o: ../../extras/audio_processor/audio_processor.c
+	$(KOS_CC) $(KOS_CFLAGS) -c $< -o $@
+
 include $(KOS_BASE)/loadables/elf/Makefile.prefab

@@ -15,6 +15,7 @@
 #define DC_INPUT_ANALOG_THRESHOLD 64
 #define DC_INPUT_REPEAT_DELAY     18
 #define DC_INPUT_REPEAT_RATE      4
+#define DC_INPUT_FRAME_MS         16
 
 struct dc_input_state
 {
@@ -46,5 +47,8 @@ bool dc_input_repeat(bool pressed, int *timer);
  * Returns the active axis (-1, 0, or +1) when a repeat event fires.
  */
 int dc_input_repeat_axis(int axis, int *timer, int *last_axis);
+
+/** Fire once when an axis leaves neutral; resets when the axis returns to 0. */
+int dc_input_axis_edge(int axis, int *last_axis);
 
 #endif /* DC_INPUT_H */

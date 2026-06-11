@@ -248,7 +248,7 @@ void gb_error(struct gb_s *gb, const enum gb_error_e gb_err, const uint16_t addr
 	};
 
 	(void)addr;
-	if (p->save_size > 0 && p->save_path[0] != '\0')
+	if (p->save_size > 0 && p->cart_ram && p->save_path[0] != '\0')
 		dc_cart_ram_write_file(p->save_path, p->cart_ram, p->save_size);
 
 	printf("walnut-dc: emulator error %s\n",
@@ -317,7 +317,7 @@ static int dc_init_emulator(struct gb_s *gb, struct dc_priv *p)
 	if (p->save_size > 0 && dc_cart_ram_read_file(p->save_path, &p->cart_ram,
 						      p->save_size) != 0) {
 		printf("walnut-dc: unable to allocate cart RAM\n");
-		return -2;
+		return DC_INIT_ERR_SAVE_ALLOC;
 	}
 
 	{
@@ -348,7 +348,7 @@ static int dc_handle_pause_menu(struct gb_s *gb, bool menu_mode)
 {
 	char rom_title[17];
 	enum dc_pause_menu_action action;
-	const bool has_save = priv.save_size > 0;
+	const bool has_save = priv.save_size > 0 && priv.cart_ram != NULL;
 
 	gb_get_rom_name(gb, rom_title);
 	rom_title[sizeof(rom_title) - 1] = '\0';
@@ -435,7 +435,7 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 				message = "Invalid ROM checksum.";
 			else if (init_err == GB_INIT_CARTRIDGE_UNSUPPORTED)
 				message = "Unsupported cartridge type.";
-			else if (init_err == -2)
+			else if (init_err == DC_INIT_ERR_SAVE_ALLOC)
 				message = "Out of memory for save data.";
 
 			dc_menu_show_message("Load Failed", message, 1500);
@@ -449,7 +449,7 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 
 	gb_get_rom_name(&gb, rom_title);
 	rom_title[sizeof(rom_title) - 1] = '\0';
-	printf("Walnut-DC: %s\n", rom_title);
+	printf("PocketDC: %s\n", rom_title);
 
 	target_ticks = (uint64_t)(1000.0 / VERTICAL_SYNC);
 
@@ -587,6 +587,8 @@ int main(int argc, char **argv)
 #if ENABLE_SOUND
 	if (dc_audio_init() != 0)
 		printf("walnut-dc: audio init failed, continuing without sound\n");
+	else
+		dc_apply_av_settings();
 #endif
 
 	dc_input_init();

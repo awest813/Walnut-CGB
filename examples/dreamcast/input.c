@@ -72,6 +72,20 @@ int dc_input_repeat_axis(int axis, int *timer, int *last_axis)
 	return axis;
 }
 
+int dc_input_axis_edge(int axis, int *last_axis)
+{
+	if (axis == 0) {
+		*last_axis = 0;
+		return 0;
+	}
+
+	if (axis == *last_axis)
+		return 0;
+
+	*last_axis = axis;
+	return axis;
+}
+
 static uint8_t dc_buttons_to_joypad(uint32_t buttons)
 {
 	uint8_t joypad = 0xFF;

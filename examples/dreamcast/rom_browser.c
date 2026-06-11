@@ -28,7 +28,6 @@
 #define DC_BROWSER_HELP_Y      56
 #define DC_BROWSER_GRID_CELL_W 120
 #define DC_BROWSER_GRID_CELL_H 108
-#define DC_FRAME_MS 16
 
 struct dc_browser_root
 {
@@ -139,6 +138,38 @@ static void dc_browser_clamp_selected(struct dc_browser *browser)
 		browser->selected = browser->count - 1;
 }
 
+static void dc_browser_restore_selection(struct dc_browser *browser,
+					 const char *previous_path,
+					 const char *previous_name,
+					 int previous_selected)
+{
+	int i;
+	bool found = false;
+
+	if (previous_path[0] != '\0') {
+		for (i = 0; i < browser->count; i++) {
+			if (strcmp(browser->entries[i].path, previous_path) == 0) {
+				browser->selected = i;
+				found = true;
+				break;
+			}
+		}
+	}
+
+	if (!found && previous_name[0] != '\0') {
+		for (i = 0; i < browser->count; i++) {
+			if (strcasecmp(browser->entries[i].name, previous_name) == 0) {
+				browser->selected = i;
+				found = true;
+				break;
+			}
+		}
+	}
+
+	if (!found && previous_selected < browser->count)
+		browser->selected = previous_selected;
+}
+
 int dc_browser_scan(struct dc_browser *browser)
 {
 	DIR *dir;
@@ -205,8 +236,8 @@ int dc_browser_scan(struct dc_browser *browser)
 					fclose(save_file);
 				}
 			}
-			count++;
 		}
+		count++;
 	}
 
 	closedir(dir);
@@ -215,34 +246,8 @@ int dc_browser_scan(struct dc_browser *browser)
 	qsort(browser->entries, (size_t)browser->count, sizeof(browser->entries[0]),
 	      dc_browser_entry_compare);
 
-	if (previous_path[0] != '\0') {
-		int i;
-		bool found = false;
-
-		for (i = 0; i < browser->count; i++) {
-			if (strcmp(browser->entries[i].path, previous_path) == 0) {
-				browser->selected = i;
-				found = true;
-				break;
-			}
-		}
-
-		if (!found && previous_name[0] != '\0') {
-			for (i = 0; i < browser->count; i++) {
-				if (strcasecmp(browser->entries[i].name,
-					       previous_name) == 0) {
-					browser->selected = i;
-					found = true;
-					break;
-				}
-			}
-		}
-
-		if (!found && previous_selected < browser->count)
-			browser->selected = previous_selected;
-	} else if (previous_selected < browser->count) {
-		browser->selected = previous_selected;
-	}
+	dc_browser_restore_selection(browser, previous_path, previous_name,
+				     previous_selected);
 
 	dc_browser_clamp_selected(browser);
 	dc_browser_update_scroll(browser);
@@ -425,7 +430,7 @@ void dc_browser_show_loading(const char *rom_name)
 
 		dc_ui_draw_loading(screen, "Starting Game", subtitle, progress);
 		dc_video_present_screen(screen);
-		timer_spin(DC_FRAME_MS);
+		timer_spin(DC_INPUT_FRAME_MS);
 	}
 }
 
@@ -664,8 +669,8 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 
 		/* Hold the loop near 60 Hz so auto-repeat timing is stable. */
 		elapsed = timer_ms_gettime64() - frame_start;
-		if (elapsed < DC_FRAME_MS)
-			timer_spin((int)(DC_FRAME_MS - elapsed));
+		if (elapsed < DC_INPUT_FRAME_MS)
+			timer_spin((int)(DC_INPUT_FRAME_MS - elapsed));
 	}
 }
 
