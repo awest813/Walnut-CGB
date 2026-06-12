@@ -594,6 +594,7 @@ int main(int argc, char **argv)
 	dc_input_init();
 	palette_selection = app_settings.palette_index;
 	dc_browser_init(&browser);
+	dc_browser_apply_persisted(&browser, &app_settings);
 
 	if (argc >= 2) {
 		const char *save_path = (argc >= 3) ? argv[2] : NULL;
@@ -627,8 +628,20 @@ int main(int argc, char **argv)
 
 			while (action == DC_MAIN_MENU_ROM_LIBRARY) {
 				if (!dc_browser_run(&browser, selected_rom,
-						    sizeof(selected_rom)))
+						    sizeof(selected_rom))) {
+					dc_browser_export_persisted(&browser,
+								    &app_settings);
+					dc_settings_save(&app_settings);
 					break;
+				}
+
+				strncpy(app_settings.last_rom_path, selected_rom,
+					sizeof(app_settings.last_rom_path) - 1);
+				app_settings.last_rom_path[
+					sizeof(app_settings.last_rom_path) - 1] = '\0';
+				dc_browser_export_persisted(&browser, &app_settings);
+				dc_settings_save(&app_settings);
+
 				if (!dc_run_game(selected_rom, NULL, true))
 					goto shutdown;
 			}

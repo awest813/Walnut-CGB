@@ -21,6 +21,7 @@
 #	include "blargg_apu/audio.h"
 #elif defined(ENABLE_SOUND_MINIGB)
 #	include "minigb_apu/minigb_apu.h"
+#	include "../../extras/audio_processor/audio_processor.h"
 #endif
 
 uint8_t audio_read(uint16_t addr);
@@ -53,6 +54,7 @@ struct priv_t
 };
 
 static struct minigb_apu_ctx apu;
+static struct audio_processor audio_proc;
 
 /**
  * Returns a byte from the ROM file at the given address.
@@ -146,7 +148,14 @@ void audio_write(uint16_t addr, uint8_t val)
 
 void audio_callback(void *ptr, uint8_t *data, int len)
 {
+	const unsigned int frame_count =
+		(unsigned int)len / (int)sizeof(int16_t) / AUDIO_CHANNELS;
+
+	(void)ptr;
 	minigb_apu_audio_callback(&apu, (void *)data);
+	if (frame_count > 0)
+		audio_processor_process_s16_stereo(&audio_proc, (int16_t *)data,
+						 frame_count);
 }
 
 void read_cart_ram_file(const char *save_file_name, uint8_t **dest,
@@ -979,6 +988,7 @@ int main(int argc, char **argv)
 		}
 
 		minigb_apu_audio_init(&apu);
+		audio_processor_init(&audio_proc);
 		SDL_PauseAudioDevice(dev, 0);
 	}
 #endif

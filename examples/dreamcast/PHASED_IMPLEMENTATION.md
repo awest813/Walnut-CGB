@@ -1,6 +1,6 @@
-# Walnut-CGB Dreamcast Port — Phased Implementation
+# PocketDC — Phased Implementation
 
-This document tracks the implementation plan for porting **Walnut-CGB** to the Sega Dreamcast via **KallistiOS (KOS)**. The core library (`walnut_cgb.h`) stays unchanged; all platform work lives in `examples/dreamcast/`.
+This document tracks the implementation plan for **PocketDC**, a Dreamcast port of **Walnut-CGB** via **KallistiOS (KOS)**. The core library (`walnut_cgb.h`) stays unchanged; all platform work lives in `examples/dreamcast/`.
 
 ## Feasibility Summary
 
@@ -43,6 +43,7 @@ examples/dreamcast/
 
 MiniGB APU is compiled from `examples/sdl2/minigb_apu/` (shared, not duplicated).
 Master volume and mute run through `extras/audio_processor/` (MIT).
+Config load/save uses `extras/ini_kv/` (MIT); browser device, view, and last ROM persist across sessions.
 
 ## Compile-Time Defines (SH-4)
 
@@ -122,7 +123,7 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 - [x] Start+B returns to main menu when launched without ROM argument
 - [x] Start screen and main menu (ROM Library, Settings, Controls, Exit)
 - [x] Pause menu with manual save/load (Start + Y)
-- [x] Persistent settings (`walnut-dc.cfg`) with live apply for video/audio
+- [x] Persistent settings (`pocketdc.cfg`) with live apply for video/audio
 - [x] ROM library list/grid views with box art (xero/boxart CC0)
 - [x] Scale modes, status bar HUD, volume/mute, audio buffer modes
 - [x] Toast notifications and controls reference screen

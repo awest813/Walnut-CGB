@@ -146,6 +146,7 @@ void dc_audio_configure(uint8_t volume, bool muted,
 	if (new_capacity != ring_capacity) {
 		ring_capacity = new_capacity;
 		dc_audio_ring_reset();
+		audio_processor_reset(&processor);
 	}
 }
 

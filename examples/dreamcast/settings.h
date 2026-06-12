@@ -1,5 +1,5 @@
 /*
- * Walnut-CGB Dreamcast frontend — persistent settings.
+ * PocketDC Dreamcast frontend — persistent settings.
  * Copyright (c) 2025 Mr. Paul (https://github.com/Mr-PauI)
  * Licensed under the MIT License.
  */
@@ -13,13 +13,15 @@
 #include "display.h"
 #include "video.h"
 
-#define DC_SETTINGS_AUTOSAVE_MIN_SEC 10
-#define DC_SETTINGS_AUTOSAVE_MAX_SEC 300
+#define DC_SETTINGS_CONFIG_VERSION     1
+#define DC_SETTINGS_AUTOSAVE_MIN_SEC   10
+#define DC_SETTINGS_AUTOSAVE_MAX_SEC   300
 #define DC_SETTINGS_AUTOSAVE_DEFAULT_SEC 60
-#define DC_SETTINGS_VOLUME_MIN 0
-#define DC_SETTINGS_VOLUME_MAX 100
-#define DC_SETTINGS_VOLUME_DEFAULT 100
-#define DC_SETTINGS_ROW_COUNT 9
+#define DC_SETTINGS_VOLUME_MIN         0
+#define DC_SETTINGS_VOLUME_MAX         100
+#define DC_SETTINGS_VOLUME_DEFAULT     100
+#define DC_SETTINGS_ROW_COUNT          9
+#define DC_SETTINGS_LAST_ROM_LEN       256
 
 enum dc_audio_buffer_mode
 {
@@ -41,6 +43,9 @@ struct dc_settings
 	uint8_t volume;
 	bool muted;
 	enum dc_audio_buffer_mode audio_buffer;
+	int browser_root_index;
+	uint8_t browser_view;
+	char last_rom_path[DC_SETTINGS_LAST_ROM_LEN];
 };
 
 void dc_settings_init_defaults(struct dc_settings *settings);

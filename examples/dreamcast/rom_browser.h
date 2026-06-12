@@ -14,6 +14,8 @@
 #include "cover.h"
 #include "dc_priv.h"
 
+struct dc_settings;
+
 #define DC_BROWSER_MAX_ENTRIES 128
 #define DC_BROWSER_LIST_LINES    9
 #define DC_BROWSER_GRID_COLS     5
@@ -70,6 +72,10 @@ int dc_cart_ram_reload_file(const char *save_path, uint8_t *dest, size_t len);
 int dc_cart_ram_write_file(const char *save_path, const uint8_t *data, size_t len);
 
 void dc_browser_init(struct dc_browser *browser);
+void dc_browser_apply_persisted(struct dc_browser *browser,
+				const struct dc_settings *settings);
+void dc_browser_export_persisted(const struct dc_browser *browser,
+				 struct dc_settings *settings);
 int dc_browser_scan(struct dc_browser *browser);
 const char *dc_browser_device_label(const struct dc_browser *browser);
 bool dc_browser_run(struct dc_browser *browser, char *selected_path, size_t selected_len);

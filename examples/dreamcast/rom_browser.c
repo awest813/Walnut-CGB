@@ -15,6 +15,7 @@
 
 #include "input.h"
 #include "rom_browser.h"
+#include "settings.h"
 #include "toast.h"
 #include "ui.h"
 #include "video.h"
@@ -34,6 +35,8 @@ struct dc_browser_root
 	const char *path;
 	const char *label;
 };
+
+static char dc_browser_rom_hint[DC_SETTINGS_LAST_ROM_LEN];
 
 static const struct dc_browser_root dc_browser_roots[] = {
 	{ "/cd/roms", "GD-ROM" },
@@ -102,6 +105,16 @@ static void dc_browser_entry_prepare_cover(struct dc_browser *browser,
 	entry->cover_ready = true;
 }
 
+static int dc_browser_root_count(void)
+{
+	int count = 0;
+
+	while (dc_browser_roots[count].path != NULL)
+		count++;
+
+	return count;
+}
+
 void dc_browser_init(struct dc_browser *browser)
 {
 	memset(browser, 0, sizeof(*browser));
@@ -110,6 +123,48 @@ void dc_browser_init(struct dc_browser *browser)
 	strncpy(browser->root_path, dc_browser_roots[0].path,
 		sizeof(browser->root_path) - 1);
 	dc_browser_set_covers_path(browser);
+}
+
+void dc_browser_apply_persisted(struct dc_browser *browser,
+				const struct dc_settings *settings)
+{
+	const int root_count = dc_browser_root_count();
+
+	if (!browser || !settings)
+		return;
+
+	if (settings->browser_root_index >= 0 &&
+	    settings->browser_root_index < root_count) {
+		browser->root_index = settings->browser_root_index;
+		strncpy(browser->root_path,
+			dc_browser_roots[browser->root_index].path,
+			sizeof(browser->root_path) - 1);
+		browser->root_path[sizeof(browser->root_path) - 1] = '\0';
+		dc_browser_set_covers_path(browser);
+	}
+
+	if (settings->browser_view == DC_BROWSER_VIEW_GRID)
+		browser->view = DC_BROWSER_VIEW_GRID;
+	else
+		browser->view = DC_BROWSER_VIEW_LIST;
+
+	if (settings->last_rom_path[0] != '\0') {
+		strncpy(dc_browser_rom_hint, settings->last_rom_path,
+			sizeof(dc_browser_rom_hint) - 1);
+		dc_browser_rom_hint[sizeof(dc_browser_rom_hint) - 1] = '\0';
+	} else {
+		dc_browser_rom_hint[0] = '\0';
+	}
+}
+
+void dc_browser_export_persisted(const struct dc_browser *browser,
+				 struct dc_settings *settings)
+{
+	if (!browser || !settings)
+		return;
+
+	settings->browser_root_index = browser->root_index;
+	settings->browser_view = (uint8_t)browser->view;
 }
 
 const char *dc_browser_device_label(const struct dc_browser *browser)
@@ -168,6 +223,21 @@ static void dc_browser_restore_selection(struct dc_browser *browser,
 
 	if (!found && previous_selected < browser->count)
 		browser->selected = previous_selected;
+}
+
+static void dc_browser_select_rom_hint(struct dc_browser *browser)
+{
+	int i;
+
+	if (!browser || dc_browser_rom_hint[0] == '\0')
+		return;
+
+	for (i = 0; i < browser->count; i++) {
+		if (strcmp(browser->entries[i].path, dc_browser_rom_hint) == 0) {
+			browser->selected = i;
+			return;
+		}
+	}
 }
 
 int dc_browser_scan(struct dc_browser *browser)
@@ -248,6 +318,7 @@ int dc_browser_scan(struct dc_browser *browser)
 
 	dc_browser_restore_selection(browser, previous_path, previous_name,
 				     previous_selected);
+	dc_browser_select_rom_hint(browser);
 
 	dc_browser_clamp_selected(browser);
 	dc_browser_update_scroll(browser);

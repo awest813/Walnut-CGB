@@ -26,13 +26,26 @@
 
 #include "audio_processor.h"
 
+#define AUDIO_PROCESSOR_HP_SHIFT 8
+
 void audio_processor_init(struct audio_processor *proc)
 {
 	if (!proc)
 		return;
 
+	memset(proc, 0, sizeof(*proc));
 	proc->volume = AUDIO_PROCESSOR_VOLUME_DEFAULT;
-	proc->muted = false;
+}
+
+void audio_processor_reset(struct audio_processor *proc)
+{
+	if (!proc)
+		return;
+
+	proc->fade_remaining = 0;
+	proc->fade_total = 0;
+	proc->hp_state[0] = 0;
+	proc->hp_state[1] = 0;
 }
 
 void audio_processor_set_volume(struct audio_processor *proc, uint8_t volume)
@@ -48,10 +61,12 @@ void audio_processor_set_volume(struct audio_processor *proc, uint8_t volume)
 
 void audio_processor_set_muted(struct audio_processor *proc, bool muted)
 {
-	if (!proc)
+	if (!proc || proc->muted == muted)
 		return;
 
 	proc->muted = muted;
+	proc->fade_total = AUDIO_PROCESSOR_FADE_SAMPLES;
+	proc->fade_remaining = AUDIO_PROCESSOR_FADE_SAMPLES;
 }
 
 static int16_t audio_processor_clip_s16(int32_t sample)
@@ -64,31 +79,72 @@ static int16_t audio_processor_clip_s16(int32_t sample)
 	return (int16_t)sample;
 }
 
+static int16_t audio_processor_dc_block(int16_t sample, int32_t *state)
+{
+	const int32_t in = sample;
+	const int32_t out = in - *state;
+
+	*state = in - (out >> AUDIO_PROCESSOR_HP_SHIFT);
+	return audio_processor_clip_s16(out);
+}
+
+static uint16_t audio_processor_mute_gain_q15(const struct audio_processor *proc)
+{
+	if (proc->fade_remaining == 0)
+		return proc->muted ? 0 : 32768;
+
+	if (proc->muted) {
+		return (uint16_t)((uint32_t)proc->fade_remaining * 32768U /
+				  proc->fade_total);
+	}
+
+	return (uint16_t)(((uint32_t)proc->fade_total - proc->fade_remaining) *
+			  32768U / proc->fade_total);
+}
+
 void audio_processor_process_s16_stereo(struct audio_processor *proc,
 					int16_t *interleaved,
 					unsigned int frame_count)
 {
-	unsigned int i;
-	unsigned int sample_count;
+	unsigned int frame;
 
 	if (!proc || !interleaved || frame_count == 0)
 		return;
 
-	sample_count = frame_count * 2U;
+	for (frame = 0; frame < frame_count; frame++) {
+		const unsigned int left = frame * 2U;
+		const unsigned int right = left + 1U;
+		const uint16_t mute_gain = audio_processor_mute_gain_q15(proc);
+		int32_t sample_l;
+		int32_t sample_r;
 
-	if (proc->muted || proc->volume == 0) {
-		memset(interleaved, 0, sample_count * sizeof(int16_t));
-		return;
-	}
+		if (proc->fade_remaining > 0)
+			proc->fade_remaining--;
 
-	if (proc->volume == AUDIO_PROCESSOR_VOLUME_MAX)
-		return;
+		sample_l = audio_processor_dc_block(interleaved[left], &proc->hp_state[0]);
+		sample_r = audio_processor_dc_block(interleaved[right], &proc->hp_state[1]);
 
-	for (i = 0; i < sample_count; i++) {
-		const int32_t scaled =
-			((int32_t)interleaved[i] * (int32_t)proc->volume) /
-			AUDIO_PROCESSOR_VOLUME_MAX;
+		if (mute_gain == 0) {
+			interleaved[left] = 0;
+			interleaved[right] = 0;
+			continue;
+		}
 
-		interleaved[i] = audio_processor_clip_s16(scaled);
+		if (proc->volume == AUDIO_PROCESSOR_VOLUME_MAX && mute_gain == 32768) {
+			interleaved[left] = (int16_t)sample_l;
+			interleaved[right] = (int16_t)sample_r;
+			continue;
+		}
+
+		{
+			const uint32_t gain =
+				(uint32_t)proc->volume * (uint32_t)mute_gain /
+				AUDIO_PROCESSOR_VOLUME_MAX;
+
+			interleaved[left] =
+				audio_processor_clip_s16((sample_l * (int32_t)gain) / 32768);
+			interleaved[right] =
+				audio_processor_clip_s16((sample_r * (int32_t)gain) / 32768);
+		}
 	}
 }

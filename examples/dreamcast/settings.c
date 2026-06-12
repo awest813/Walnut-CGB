@@ -1,13 +1,13 @@
 /*
- * Walnut-CGB Dreamcast frontend — persistent settings.
+ * PocketDC Dreamcast frontend — persistent settings.
  * Copyright (c) 2025 Mr. Paul (https://github.com/Mr-PauI)
  * Licensed under the MIT License.
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
+#include "../../extras/ini_kv/ini_kv.h"
 #include "palette.h"
 #include "settings.h"
 
@@ -17,7 +17,11 @@ static const char *const dc_audio_buffer_names[DC_AUDIO_BUFFER_COUNT] = {
 	"Stable"
 };
 
-static const char *dc_settings_paths[] = {
+static const char *dc_settings_read_paths[] = {
+	"/pc/pocketdc.cfg",
+	"/sd/pocketdc.cfg",
+	"/ide/pocketdc.cfg",
+	"/cd/pocketdc.cfg",
 	"/pc/walnut-dc.cfg",
 	"/sd/walnut-dc.cfg",
 	"/ide/walnut-dc.cfg",
@@ -25,8 +29,17 @@ static const char *dc_settings_paths[] = {
 	NULL
 };
 
+static const char *dc_settings_write_paths[] = {
+	"/pc/pocketdc.cfg",
+	"/sd/pocketdc.cfg",
+	"/ide/pocketdc.cfg",
+	"/cd/pocketdc.cfg",
+	NULL
+};
+
 void dc_settings_init_defaults(struct dc_settings *settings)
 {
+	memset(settings, 0, sizeof(*settings));
 	settings->palette_index = 3;
 	settings->video_output = DC_VIDEO_OUTPUT_AUTO;
 	settings->scale_mode = DC_SCALE_3X;
@@ -37,6 +50,8 @@ void dc_settings_init_defaults(struct dc_settings *settings)
 	settings->volume = DC_SETTINGS_VOLUME_DEFAULT;
 	settings->muted = false;
 	settings->audio_buffer = DC_AUDIO_BUFFER_NORMAL;
+	settings->browser_root_index = 0;
+	settings->browser_view = 0;
 }
 
 const char *dc_audio_buffer_name(enum dc_audio_buffer_mode mode)
@@ -68,90 +83,112 @@ static void dc_settings_clamp(struct dc_settings *settings)
 
 	if (settings->audio_buffer >= DC_AUDIO_BUFFER_COUNT)
 		settings->audio_buffer = DC_AUDIO_BUFFER_NORMAL;
+
+	if (settings->browser_root_index < 0)
+		settings->browser_root_index = 0;
+	if (settings->browser_root_index > 7)
+		settings->browser_root_index = 0;
+
+	if (settings->browser_view > 1)
+		settings->browser_view = 0;
 }
 
-static int dc_settings_parse_line(struct dc_settings *settings, const char *line)
+static void dc_settings_parse_line(struct dc_settings *settings, const char *line)
 {
 	int value;
 
-	if (sscanf(line, " palette_index = %d", &value) == 1 ||
-	    sscanf(line, "palette_index=%d", &value) == 1) {
+	if (ini_kv_get_int(line, "config_version", &value))
+		return;
+
+	if (ini_kv_get_int(line, "palette_index", &value)) {
 		settings->palette_index = (uint8_t)value;
-		return 0;
+		return;
 	}
 
-	if (sscanf(line, " video_output = %d", &value) == 1 ||
-	    sscanf(line, "video_output=%d", &value) == 1) {
+	if (ini_kv_get_int(line, "video_output", &value)) {
 		settings->video_output = (enum dc_video_output)value;
-		return 0;
+		return;
 	}
 
-	if (sscanf(line, " scale_mode = %d", &value) == 1 ||
-	    sscanf(line, "scale_mode=%d", &value) == 1) {
+	if (ini_kv_get_int(line, "scale_mode", &value)) {
 		settings->scale_mode = (enum dc_scale_mode)value;
-		return 0;
+		return;
 	}
 
-	if (sscanf(line, " status_bar = %d", &value) == 1 ||
-	    sscanf(line, "status_bar=%d", &value) == 1) {
+	if (ini_kv_get_int(line, "status_bar", &value)) {
 		settings->status_bar = value != 0;
-		return 0;
+		return;
 	}
 
-	if (sscanf(line, " frameskip = %d", &value) == 1 ||
-	    sscanf(line, "frameskip=%d", &value) == 1) {
+	if (ini_kv_get_int(line, "frameskip", &value)) {
 		settings->frameskip = value != 0;
-		return 0;
+		return;
 	}
 
-	if (sscanf(line, " autosave_enabled = %d", &value) == 1 ||
-	    sscanf(line, "autosave_enabled=%d", &value) == 1) {
+	if (ini_kv_get_int(line, "autosave_enabled", &value)) {
 		settings->autosave_enabled = value != 0;
-		return 0;
+		return;
 	}
 
-	if (sscanf(line, " autosave_interval_sec = %d", &value) == 1 ||
-	    sscanf(line, "autosave_interval_sec=%d", &value) == 1) {
+	if (ini_kv_get_int(line, "autosave_interval_sec", &value)) {
 		settings->autosave_interval_sec = value;
-		return 0;
+		return;
 	}
 
-	if (sscanf(line, " volume = %d", &value) == 1 ||
-	    sscanf(line, "volume=%d", &value) == 1) {
+	if (ini_kv_get_int(line, "volume", &value)) {
 		settings->volume = (uint8_t)value;
-		return 0;
+		return;
 	}
 
-	if (sscanf(line, " muted = %d", &value) == 1 ||
-	    sscanf(line, "muted=%d", &value) == 1) {
+	if (ini_kv_get_int(line, "muted", &value)) {
 		settings->muted = value != 0;
-		return 0;
+		return;
 	}
 
-	if (sscanf(line, " audio_buffer = %d", &value) == 1 ||
-	    sscanf(line, "audio_buffer=%d", &value) == 1) {
+	if (ini_kv_get_int(line, "audio_buffer", &value)) {
 		settings->audio_buffer = (enum dc_audio_buffer_mode)value;
-		return 0;
+		return;
 	}
 
-	return -1;
+	if (ini_kv_get_int(line, "browser_root_index", &value)) {
+		settings->browser_root_index = value;
+		return;
+	}
+
+	if (ini_kv_get_int(line, "browser_view", &value)) {
+		settings->browser_view = (uint8_t)value;
+		return;
+	}
+
+	if (ini_kv_get_string(line, "last_rom_path", settings->last_rom_path,
+			      sizeof(settings->last_rom_path)))
+		return;
 }
 
 void dc_settings_load(struct dc_settings *settings)
 {
 	FILE *f;
-	char line[128];
+	char line[320];
 	unsigned int i;
 
 	dc_settings_init_defaults(settings);
 
-	for (i = 0; dc_settings_paths[i] != NULL; i++) {
-		f = fopen(dc_settings_paths[i], "r");
+	for (i = 0; dc_settings_read_paths[i] != NULL; i++) {
+		f = fopen(dc_settings_read_paths[i], "r");
 		if (!f)
 			continue;
 
-		while (fgets(line, sizeof(line), f) != NULL)
+		while (fgets(line, sizeof(line), f) != NULL) {
+			char *newline = strchr(line, '\n');
+
+			if (newline)
+				*newline = '\0';
+
+			if (line[0] == '#' || line[0] == '\0' || line[0] == ';')
+				continue;
+
 			dc_settings_parse_line(settings, line);
+		}
 
 		fclose(f);
 		break;
@@ -165,21 +202,26 @@ int dc_settings_save(const struct dc_settings *settings)
 	FILE *f;
 	unsigned int i;
 
-	for (i = 0; dc_settings_paths[i] != NULL; i++) {
-		f = fopen(dc_settings_paths[i], "w");
+	for (i = 0; dc_settings_write_paths[i] != NULL; i++) {
+		f = fopen(dc_settings_write_paths[i], "w");
 		if (!f)
 			continue;
 
-		fprintf(f, "palette_index=%u\n", settings->palette_index);
-		fprintf(f, "video_output=%d\n", (int)settings->video_output);
-		fprintf(f, "scale_mode=%d\n", (int)settings->scale_mode);
-		fprintf(f, "status_bar=%d\n", settings->status_bar ? 1 : 0);
-		fprintf(f, "frameskip=%d\n", settings->frameskip ? 1 : 0);
-		fprintf(f, "autosave_enabled=%d\n", settings->autosave_enabled ? 1 : 0);
-		fprintf(f, "autosave_interval_sec=%d\n", settings->autosave_interval_sec);
-		fprintf(f, "volume=%u\n", settings->volume);
-		fprintf(f, "muted=%d\n", settings->muted ? 1 : 0);
-		fprintf(f, "audio_buffer=%d\n", (int)settings->audio_buffer);
+		ini_kv_fprint_int(f, "config_version", DC_SETTINGS_CONFIG_VERSION);
+		ini_kv_fprint_int(f, "palette_index", settings->palette_index);
+		ini_kv_fprint_int(f, "video_output", (int)settings->video_output);
+		ini_kv_fprint_int(f, "scale_mode", (int)settings->scale_mode);
+		ini_kv_fprint_bool(f, "status_bar", settings->status_bar);
+		ini_kv_fprint_bool(f, "frameskip", settings->frameskip);
+		ini_kv_fprint_bool(f, "autosave_enabled", settings->autosave_enabled);
+		ini_kv_fprint_int(f, "autosave_interval_sec",
+				  settings->autosave_interval_sec);
+		ini_kv_fprint_int(f, "volume", settings->volume);
+		ini_kv_fprint_bool(f, "muted", settings->muted);
+		ini_kv_fprint_int(f, "audio_buffer", (int)settings->audio_buffer);
+		ini_kv_fprint_int(f, "browser_root_index", settings->browser_root_index);
+		ini_kv_fprint_int(f, "browser_view", settings->browser_view);
+		ini_kv_fprint_string(f, "last_rom_path", settings->last_rom_path);
 		fclose(f);
 		return 0;
 	}
