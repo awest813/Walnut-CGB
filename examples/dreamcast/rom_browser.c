@@ -15,6 +15,7 @@
 
 #include "input.h"
 #include "rom_browser.h"
+#include "settings.h"
 #include "toast.h"
 #include "ui.h"
 #include "video.h"
@@ -34,6 +35,9 @@ struct dc_browser_root
 	const char *path;
 	const char *label;
 };
+
+static char dc_browser_rom_hint[DC_SETTINGS_LAST_ROM_LEN];
+static char dc_browser_recent[DC_SETTINGS_RECENT_MAX][DC_SETTINGS_LAST_ROM_LEN];
 
 static const struct dc_browser_root dc_browser_roots[] = {
 	{ "/cd/roms", "GD-ROM" },
@@ -102,14 +106,75 @@ static void dc_browser_entry_prepare_cover(struct dc_browser *browser,
 	entry->cover_ready = true;
 }
 
+static int dc_browser_root_count(void)
+{
+	int count = 0;
+
+	while (dc_browser_roots[count].path != NULL)
+		count++;
+
+	return count;
+}
+
 void dc_browser_init(struct dc_browser *browser)
 {
 	memset(browser, 0, sizeof(*browser));
 	browser->root_index = 0;
 	browser->view = DC_BROWSER_VIEW_LIST;
+	browser->filter = DC_BROWSER_FILTER_ALL;
 	strncpy(browser->root_path, dc_browser_roots[0].path,
 		sizeof(browser->root_path) - 1);
 	dc_browser_set_covers_path(browser);
+}
+
+void dc_browser_apply_persisted(struct dc_browser *browser,
+				const struct dc_settings *settings)
+{
+	const int root_count = dc_browser_root_count();
+
+	if (!browser || !settings)
+		return;
+
+	if (settings->browser_root_index >= 0 &&
+	    settings->browser_root_index < root_count) {
+		browser->root_index = settings->browser_root_index;
+		strncpy(browser->root_path,
+			dc_browser_roots[browser->root_index].path,
+			sizeof(browser->root_path) - 1);
+		browser->root_path[sizeof(browser->root_path) - 1] = '\0';
+		dc_browser_set_covers_path(browser);
+	}
+
+	if (settings->browser_view == DC_BROWSER_VIEW_GRID)
+		browser->view = DC_BROWSER_VIEW_GRID;
+	else
+		browser->view = DC_BROWSER_VIEW_LIST;
+
+	if (settings->last_rom_path[0] != '\0') {
+		strncpy(dc_browser_rom_hint, settings->last_rom_path,
+			sizeof(dc_browser_rom_hint) - 1);
+		dc_browser_rom_hint[sizeof(dc_browser_rom_hint) - 1] = '\0';
+	} else {
+		dc_browser_rom_hint[0] = '\0';
+	}
+
+	memcpy(dc_browser_recent, settings->recent_roms, sizeof(dc_browser_recent));
+
+	if (settings->browser_filter <= DC_BROWSER_FILTER_GBC)
+		browser->filter = (enum dc_browser_filter)settings->browser_filter;
+	else
+		browser->filter = DC_BROWSER_FILTER_ALL;
+}
+
+void dc_browser_export_persisted(const struct dc_browser *browser,
+				 struct dc_settings *settings)
+{
+	if (!browser || !settings)
+		return;
+
+	settings->browser_root_index = browser->root_index;
+	settings->browser_view = (uint8_t)browser->view;
+	settings->browser_filter = (uint8_t)browser->filter;
 }
 
 const char *dc_browser_device_label(const struct dc_browser *browser)
@@ -123,10 +188,131 @@ const char *dc_browser_device_label(const struct dc_browser *browser)
 static void dc_browser_update_scroll(struct dc_browser *browser);
 static void dc_browser_move_vertical(struct dc_browser *browser, int direction);
 static void dc_browser_move_horizontal(struct dc_browser *browser, int direction);
+static void dc_browser_rebuild_display(struct dc_browser *browser, int focus_entry);
+
+static const char *dc_browser_filter_label(enum dc_browser_filter filter)
+{
+	switch (filter) {
+	case DC_BROWSER_FILTER_DMG:
+		return "DMG";
+	case DC_BROWSER_FILTER_GBC:
+		return "GBC";
+	case DC_BROWSER_FILTER_ALL:
+	default:
+		return "All";
+	}
+}
+
+static bool dc_browser_entry_passes_filter(const struct dc_browser_entry *entry,
+					   enum dc_browser_filter filter)
+{
+	if (!entry)
+		return false;
+
+	switch (filter) {
+	case DC_BROWSER_FILTER_DMG:
+		return !entry->is_cgb;
+	case DC_BROWSER_FILTER_GBC:
+		return entry->is_cgb;
+	case DC_BROWSER_FILTER_ALL:
+	default:
+		return true;
+	}
+}
+
+static int dc_browser_find_entry_by_path(const struct dc_browser *browser,
+					 const char *path)
+{
+	int i;
+
+	if (!browser || !path || path[0] == '\0')
+		return -1;
+
+	for (i = 0; i < browser->count; i++) {
+		if (strcmp(browser->entries[i].path, path) == 0)
+			return i;
+	}
+
+	return -1;
+}
+
+static bool dc_browser_display_contains(const struct dc_browser *browser,
+					int entry_index)
+{
+	int i;
+
+	for (i = 0; i < browser->display_count; i++) {
+		if (browser->display_map[i] == entry_index)
+			return true;
+	}
+
+	return false;
+}
+
+static const struct dc_browser_entry *dc_browser_selected_entry(
+	const struct dc_browser *browser)
+{
+	if (!browser || browser->display_count <= 0 ||
+	    browser->selected < 0 || browser->selected >= browser->display_count)
+		return NULL;
+
+	return &browser->entries[browser->display_map[browser->selected]];
+}
+
+static void dc_browser_rebuild_display(struct dc_browser *browser, int focus_entry)
+{
+	int i;
+	int r;
+
+	if (!browser)
+		return;
+
+	browser->display_count = 0;
+
+	if (browser->view == DC_BROWSER_VIEW_LIST) {
+		for (r = 0; r < DC_SETTINGS_RECENT_MAX; r++) {
+			const int entry_index =
+				dc_browser_find_entry_by_path(browser,
+							      dc_browser_recent[r]);
+
+			if (entry_index < 0)
+				continue;
+			if (!dc_browser_entry_passes_filter(
+				    &browser->entries[entry_index], browser->filter))
+				continue;
+			if (dc_browser_display_contains(browser, entry_index))
+				continue;
+
+			browser->display_map[browser->display_count] = entry_index;
+			browser->display_recent[browser->display_count] = true;
+			browser->display_count++;
+		}
+	}
+
+	for (i = 0; i < browser->count; i++) {
+		if (!dc_browser_entry_passes_filter(&browser->entries[i],
+						    browser->filter))
+			continue;
+		if (dc_browser_display_contains(browser, i))
+			continue;
+
+		browser->display_map[browser->display_count] = i;
+		browser->display_recent[browser->display_count] = false;
+		browser->display_count++;
+	}
+
+	browser->selected = 0;
+	for (i = 0; i < browser->display_count; i++) {
+		if (browser->display_map[i] == focus_entry) {
+			browser->selected = i;
+			break;
+		}
+	}
+}
 
 static void dc_browser_clamp_selected(struct dc_browser *browser)
 {
-	if (browser->count <= 0) {
+	if (browser->display_count <= 0) {
 		browser->selected = 0;
 		browser->scroll = 0;
 		return;
@@ -134,8 +320,8 @@ static void dc_browser_clamp_selected(struct dc_browser *browser)
 
 	if (browser->selected < 0)
 		browser->selected = 0;
-	if (browser->selected >= browser->count)
-		browser->selected = browser->count - 1;
+	if (browser->selected >= browser->display_count)
+		browser->selected = browser->display_count - 1;
 }
 
 static void dc_browser_restore_selection(struct dc_browser *browser,
@@ -166,8 +352,23 @@ static void dc_browser_restore_selection(struct dc_browser *browser,
 		}
 	}
 
-	if (!found && previous_selected < browser->count)
+	if (!found && previous_selected >= 0 && previous_selected < browser->count)
 		browser->selected = previous_selected;
+}
+
+static void dc_browser_select_rom_hint(struct dc_browser *browser)
+{
+	int i;
+
+	if (!browser || dc_browser_rom_hint[0] == '\0')
+		return;
+
+	for (i = 0; i < browser->count; i++) {
+		if (strcmp(browser->entries[i].path, dc_browser_rom_hint) == 0) {
+			browser->selected = i;
+			return;
+		}
+	}
 }
 
 int dc_browser_scan(struct dc_browser *browser)
@@ -177,17 +378,22 @@ int dc_browser_scan(struct dc_browser *browser)
 	char previous_path[sizeof(browser->entries[0].path)];
 	char previous_name[sizeof(browser->entries[0].name)];
 	int count = 0;
-	int previous_selected = browser->selected;
+	int previous_entry = -1;
 	bool truncated = false;
 
 	previous_path[0] = '\0';
 	previous_name[0] = '\0';
-	if (browser->count > 0 && browser->selected >= 0 &&
-	    browser->selected < browser->count) {
-		strncpy(previous_path, browser->entries[browser->selected].path,
+	if (browser->display_count > 0 && browser->selected >= 0 &&
+	    browser->selected < browser->display_count)
+		previous_entry = browser->display_map[browser->selected];
+	else if (browser->selected >= 0 && browser->selected < browser->count)
+		previous_entry = browser->selected;
+
+	if (previous_entry >= 0 && previous_entry < browser->count) {
+		strncpy(previous_path, browser->entries[previous_entry].path,
 			sizeof(previous_path) - 1);
 		previous_path[sizeof(previous_path) - 1] = '\0';
-		strncpy(previous_name, browser->entries[browser->selected].name,
+		strncpy(previous_name, browser->entries[previous_entry].name,
 			sizeof(previous_name) - 1);
 		previous_name[sizeof(previous_name) - 1] = '\0';
 	}
@@ -246,8 +452,16 @@ int dc_browser_scan(struct dc_browser *browser)
 	qsort(browser->entries, (size_t)browser->count, sizeof(browser->entries[0]),
 	      dc_browser_entry_compare);
 
-	dc_browser_restore_selection(browser, previous_path, previous_name,
-				     previous_selected);
+	{
+		int focus_entry = previous_entry;
+
+		dc_browser_restore_selection(browser, previous_path, previous_name,
+					     previous_entry);
+		dc_browser_select_rom_hint(browser);
+		if (browser->selected >= 0 && browser->selected < browser->count)
+			focus_entry = browser->selected;
+		dc_browser_rebuild_display(browser, focus_entry);
+	}
 
 	dc_browser_clamp_selected(browser);
 	dc_browser_update_scroll(browser);
@@ -263,15 +477,16 @@ static void dc_browser_draw_header(const struct dc_browser *browser,
 {
 	char subtitle[96];
 
-	snprintf(subtitle, sizeof(subtitle), "%s  [%s]  %s",
+	snprintf(subtitle, sizeof(subtitle), "%s  %s  %s  %s",
 		 dc_browser_device_label(browser),
+		 dc_browser_filter_label(browser->filter),
 		 browser->view == DC_BROWSER_VIEW_GRID ? "Grid" : "List",
 		 browser->root_path);
 	subtitle[sizeof(subtitle) - 1] = '\0';
 	dc_ui_draw_header(screen, "ROM Library", subtitle);
 	dc_ui_draw_text_clipped(screen, DC_UI_MARGIN_X, DC_BROWSER_HELP_Y,
 				DC_SCREEN_WIDTH - DC_UI_MARGIN_X * 2,
-				"A:Load  B:Device  Y:View  L/R:Page  Start:Refresh  X:Back",
+				"A:Load  B:Device  Y:View  L/R:Page  L+R:Filter  Start:Refresh  X:Back",
 				DC_UI_COLOR_DIM, DC_UI_COLOR_BG);
 }
 
@@ -283,11 +498,9 @@ static void dc_browser_draw_preview_panel(struct dc_browser *browser,
 	const int cover_x = DC_BROWSER_PREVIEW_X + 70;
 	const int cover_y = 72;
 
-	if (browser->count <= 0 || browser->selected < 0 ||
-	    browser->selected >= browser->count)
+	entry = (struct dc_browser_entry *)dc_browser_selected_entry(browser);
+	if (!entry)
 		return;
-
-	entry = &browser->entries[browser->selected];
 	dc_browser_entry_prepare_cover(browser, entry);
 
 	dc_ui_draw_panel(screen, DC_BROWSER_PREVIEW_X, DC_BROWSER_LIST_TOP,
@@ -319,11 +532,13 @@ static void dc_browser_draw_list(const struct dc_browser *browser,
 		uint16_t fg = DC_UI_COLOR_FG;
 		uint16_t bg = DC_UI_COLOR_BG;
 
-		if (index >= browser->count)
+		if (index >= browser->display_count)
 			break;
 
 		{
-			const struct dc_browser_entry *entry = &browser->entries[index];
+			const int entry_index = browser->display_map[index];
+			const struct dc_browser_entry *entry =
+				&browser->entries[entry_index];
 
 			if (index == browser->selected) {
 				dc_ui_fill_rect(screen, DC_BROWSER_LIST_LEFT, y - 2,
@@ -332,8 +547,9 @@ static void dc_browser_draw_list(const struct dc_browser *browser,
 				bg = DC_UI_COLOR_SELECT;
 			}
 
-			snprintf(line, sizeof(line), "%c %s%s",
+			snprintf(line, sizeof(line), "%c%s %s%s",
 				 index == browser->selected ? '>' : ' ',
+				 browser->display_recent[index] ? "*" : " ",
 				 entry->title, entry->has_save ? " [SAV]" : "");
 			dc_ui_draw_text_ellipsis(screen, DC_BROWSER_LIST_LEFT + 8, y,
 						DC_BROWSER_LIST_WIDTH - 16, line, fg, bg);
@@ -356,10 +572,10 @@ static void dc_browser_draw_grid(const struct dc_browser *browser,
 			const int y = DC_BROWSER_GRID_TOP + row * DC_BROWSER_GRID_CELL_H;
 			struct dc_browser_entry *entry;
 
-			if (index >= browser->count)
+			if (index >= browser->display_count)
 				break;
 
-			entry = &browser->entries[index];
+			entry = &browser->entries[browser->display_map[index]];
 			dc_browser_entry_prepare_cover((struct dc_browser *)browser, entry);
 
 			if (index == browser->selected)
@@ -404,13 +620,24 @@ static void dc_browser_draw(const struct dc_browser *browser,
 		return;
 	}
 
+	if (browser->display_count == 0) {
+		dc_ui_draw_panel(screen, 72, 108, 496, 140, DC_UI_COLOR_PANEL);
+		dc_ui_draw_text(screen, 96, 132, "No ROMs match this filter.",
+				DC_UI_COLOR_TITLE, DC_UI_COLOR_PANEL);
+		dc_ui_draw_text(screen, 96, 160,
+				"Press L+R to cycle All / DMG / GBC.",
+				DC_UI_COLOR_FG, DC_UI_COLOR_PANEL);
+		dc_toast_draw(screen);
+		return;
+	}
+
 	if (browser->view == DC_BROWSER_VIEW_GRID)
 		dc_browser_draw_grid(browser, screen);
 	else
 		dc_browser_draw_list(browser, screen);
 
-	snprintf(line, sizeof(line), "%d / %d ROMs", browser->selected + 1,
-		 browser->count);
+	snprintf(line, sizeof(line), "%d / %d  %s", browser->selected + 1,
+		 browser->display_count, dc_browser_filter_label(browser->filter));
 	dc_ui_draw_footer(screen, line);
 	dc_toast_draw(screen);
 }
@@ -434,12 +661,29 @@ void dc_browser_show_loading(const char *rom_name)
 	}
 }
 
+static uint32_t dc_browser_previous_buttons = 0xFFFF;
+static int dc_browser_t_up;
+static int dc_browser_t_down;
+static int dc_browser_t_left;
+static int dc_browser_t_right;
+
+static void dc_browser_flush_input(void)
+{
+	dc_input_flush_edges();
+	dc_browser_previous_buttons = 0xFFFF;
+	dc_browser_t_up = dc_browser_t_down = 0;
+	dc_browser_t_left = dc_browser_t_right = 0;
+}
+
 static void dc_browser_poll_input(struct dc_browser *browser,
 				  struct dc_browser_input *input)
 {
 	maple_device_t *controller = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
-	static uint32_t previous_buttons = 0xFFFF;
-	static int t_up, t_down, t_left, t_right;
+	uint32_t previous_buttons = dc_browser_previous_buttons;
+	int t_up = dc_browser_t_up;
+	int t_down = dc_browser_t_down;
+	int t_left = dc_browser_t_left;
+	int t_right = dc_browser_t_right;
 	cont_state_t *pad;
 	uint32_t buttons;
 	uint32_t changed;
@@ -481,13 +725,21 @@ static void dc_browser_poll_input(struct dc_browser *browser,
 		input->exit = true;
 	if ((buttons & CONT_Y) && (changed & CONT_Y))
 		input->toggle_view = true;
+	if ((buttons & CONT_LTRIGGER) && (buttons & CONT_RTRIGGER) &&
+	    (changed & (CONT_LTRIGGER | CONT_RTRIGGER)))
+		input->cycle_filter = true;
 
-	previous_buttons = buttons;
+	dc_browser_previous_buttons = buttons;
+	dc_browser_t_up = t_up;
+	dc_browser_t_down = t_down;
+	dc_browser_t_left = t_left;
+	dc_browser_t_right = t_right;
 	return;
 
 release:
-	t_up = t_down = t_left = t_right = 0;
-	previous_buttons = 0xFFFF;
+	dc_browser_t_up = dc_browser_t_down = 0;
+	dc_browser_t_left = dc_browser_t_right = 0;
+	dc_browser_previous_buttons = 0xFFFF;
 }
 
 static int dc_browser_visible_slots(const struct dc_browser *browser)
@@ -500,14 +752,14 @@ static int dc_browser_visible_slots(const struct dc_browser *browser)
 
 static void dc_browser_move_vertical(struct dc_browser *browser, int direction)
 {
-	if (browser->count <= 0)
+	if (browser->display_count <= 0)
 		return;
 
 	if (browser->view == DC_BROWSER_VIEW_LIST) {
 		browser->selected += direction;
 		if (browser->selected < 0)
-			browser->selected = browser->count - 1;
-		else if (browser->selected >= browser->count)
+			browser->selected = browser->display_count - 1;
+		else if (browser->selected >= browser->display_count)
 			browser->selected = 0;
 		return;
 	}
@@ -516,7 +768,7 @@ static void dc_browser_move_vertical(struct dc_browser *browser, int direction)
 		const int cols = DC_BROWSER_GRID_COLS;
 		const int col = browser->selected % cols;
 		int row = browser->selected / cols;
-		const int rows = (browser->count + cols - 1) / cols;
+		const int rows = (browser->display_count + cols - 1) / cols;
 
 		row += direction;
 		if (row < 0)
@@ -525,37 +777,55 @@ static void dc_browser_move_vertical(struct dc_browser *browser, int direction)
 			row = 0;
 
 		browser->selected = row * cols + col;
-		if (browser->selected >= browser->count)
-			browser->selected = browser->count - 1;
+		if (browser->selected >= browser->display_count)
+			browser->selected = browser->display_count - 1;
 	}
 }
 
 static void dc_browser_move_horizontal(struct dc_browser *browser, int direction)
 {
-	if (browser->count <= 0)
+	if (browser->display_count <= 0)
 		return;
 
 	if (browser->view == DC_BROWSER_VIEW_LIST) {
 		browser->selected += direction * dc_browser_visible_slots(browser);
 		if (browser->selected < 0)
 			browser->selected = 0;
-		else if (browser->selected >= browser->count)
-			browser->selected = browser->count - 1;
+		else if (browser->selected >= browser->display_count)
+			browser->selected = browser->display_count - 1;
 		return;
 	}
 
 	browser->selected += direction;
 	if (browser->selected < 0)
-		browser->selected = browser->count - 1;
-	else if (browser->selected >= browser->count)
+		browser->selected = browser->display_count - 1;
+	else if (browser->selected >= browser->display_count)
 		browser->selected = 0;
+}
+
+static void dc_browser_cycle_filter(struct dc_browser *browser)
+{
+	int focus_entry = -1;
+
+	if (!browser)
+		return;
+
+	if (browser->display_count > 0 && browser->selected >= 0 &&
+	    browser->selected < browser->display_count)
+		focus_entry = browser->display_map[browser->selected];
+
+	browser->filter = (enum dc_browser_filter)((browser->filter + 1) %
+						   (DC_BROWSER_FILTER_GBC + 1));
+	dc_browser_rebuild_display(browser, focus_entry);
+	dc_browser_clamp_selected(browser);
+	dc_browser_update_scroll(browser);
 }
 
 static void dc_browser_update_scroll(struct dc_browser *browser)
 {
 	const int visible = dc_browser_visible_slots(browser);
 
-	if (browser->count <= 0) {
+	if (browser->display_count <= 0) {
 		browser->scroll = 0;
 		return;
 	}
@@ -589,7 +859,9 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 		return false;
 
 	if (dc_browser_scan(browser) < 0)
-		printf("walnut-dc: unable to scan '%s'\n", browser->root_path);
+		printf("pocketdc: unable to scan '%s'\n", browser->root_path);
+
+	dc_browser_flush_input();
 
 	while (1) {
 		const uint64_t frame_start = timer_ms_gettime64();
@@ -628,8 +900,15 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 		}
 
 		if (input.toggle_view) {
+			int focus_entry = -1;
+
+			if (browser->display_count > 0 && browser->selected >= 0 &&
+			    browser->selected < browser->display_count)
+				focus_entry = browser->display_map[browser->selected];
+
 			browser->view = browser->view == DC_BROWSER_VIEW_GRID ?
 					DC_BROWSER_VIEW_LIST : DC_BROWSER_VIEW_GRID;
+			dc_browser_rebuild_display(browser, focus_entry);
 			dc_browser_clamp_selected(browser);
 			dc_browser_update_scroll(browser);
 			dc_toast_show(browser->view == DC_BROWSER_VIEW_GRID ?
@@ -638,25 +917,34 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 			dirty = true;
 		}
 
-		if (input.up && browser->count > 0) {
+		if (input.cycle_filter) {
+			dc_browser_cycle_filter(browser);
+			dc_toast_show(dc_browser_filter_label(browser->filter), 1000);
+			dirty = true;
+		}
+
+		if (input.up && browser->display_count > 0) {
 			dc_browser_move_vertical(browser, -1);
 			dirty = true;
-		} else if (input.down && browser->count > 0) {
+		} else if (input.down && browser->display_count > 0) {
 			dc_browser_move_vertical(browser, 1);
 			dirty = true;
 		}
 
-		if (input.page_up && browser->count > 0) {
+		if (input.page_up && browser->display_count > 0) {
 			dc_browser_move_horizontal(browser, -1);
 			dirty = true;
-		} else if (input.page_down && browser->count > 0) {
+		} else if (input.page_down && browser->display_count > 0) {
 			dc_browser_move_horizontal(browser, 1);
 			dirty = true;
 		}
 
-		if (input.select && browser->count > 0) {
+		if (input.select && browser->display_count > 0) {
 			const struct dc_browser_entry *entry =
-				&browser->entries[browser->selected];
+				dc_browser_selected_entry(browser);
+
+			if (!entry)
+				continue;
 
 			strncpy(selected_path, entry->path, selected_len - 1);
 			selected_path[selected_len - 1] = '\0';
@@ -706,7 +994,7 @@ int dc_rom_load(struct dc_priv *priv, const char *rom_path)
 
 	f = fopen(rom_path, "rb");
 	if (!f) {
-		printf("walnut-dc: unable to open ROM '%s'\n", rom_path);
+		printf("pocketdc: unable to open ROM '%s'\n", rom_path);
 		return -1;
 	}
 
@@ -718,7 +1006,7 @@ int dc_rom_load(struct dc_priv *priv, const char *rom_path)
 	size = ftell(f);
 	if (size < (long)DC_ROM_HEADER_SIZE || size > (8 * 1024 * 1024)) {
 		fclose(f);
-		printf("walnut-dc: invalid ROM size (%ld)\n", size);
+		printf("pocketdc: invalid ROM size (%ld)\n", size);
 		return -1;
 	}
 
@@ -808,24 +1096,57 @@ int dc_cart_ram_reload_file(const char *save_path, uint8_t *dest, size_t len)
 	return 0;
 }
 
+bool dc_save_file_exists(const char *save_path)
+{
+	FILE *f;
+
+	if (!save_path || save_path[0] == '\0')
+		return false;
+
+	f = fopen(save_path, "rb");
+	if (!f)
+		return false;
+
+	fclose(f);
+	return true;
+}
+
 int dc_cart_ram_write_file(const char *save_path, const uint8_t *data, size_t len)
 {
+	char tmp_path[272];
 	FILE *f;
 
 	if (!save_path || !data || len == 0)
 		return 0;
 
-	f = fopen(save_path, "wb");
+	snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", save_path);
+
+	f = fopen(tmp_path, "wb");
 	if (!f) {
-		printf("walnut-dc: unable to write save '%s'\n", save_path);
+		printf("pocketdc: unable to write save '%s'\n", save_path);
 		return -1;
 	}
 
 	if (fwrite(data, 1, len, f) != len) {
 		fclose(f);
+		remove(tmp_path);
+		return -1;
+	}
+
+	if (fflush(f) != 0) {
+		fclose(f);
+		remove(tmp_path);
 		return -1;
 	}
 
 	fclose(f);
+
+	remove(save_path);
+	if (rename(tmp_path, save_path) != 0) {
+		printf("pocketdc: unable to finalize save '%s'\n", save_path);
+		remove(tmp_path);
+		return -1;
+	}
+
 	return 0;
 }

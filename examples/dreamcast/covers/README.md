@@ -1,6 +1,6 @@
 # ROM Cover Art
 
-Walnut-DC shows cover art in the ROM picker using Dreamcast-native `.w555` thumbnails (96×96 RGB555).
+PocketDC shows cover art in the ROM picker using Dreamcast-native `.w555` thumbnails (96×96 RGB555).
 
 ## Bundled art (Game Boy / Game Boy Color)
 
@@ -47,7 +47,7 @@ make -f Makefile.covers fetch-roms ROMS_DIR=disc-build/roms
 
 ## Lookup order
 
-For each ROM, Walnut-DC tries:
+For each ROM, PocketDC tries:
 
 1. `covers/ROMNAME.w555` — manual override
 2. `covers/boxart/GBC/ROMNAME.w555` or `covers/GBC/ROMNAME.w555` (GBC ROMs)

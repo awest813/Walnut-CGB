@@ -1,5 +1,5 @@
 /*
- * PocketDC / Walnut-CGB — lightweight stereo sample processor.
+ * PocketDC / Walnut-CGB — minimal key=value config helpers.
  * Copyright (c) 2025 Mr. Paul (https://github.com/Mr-PauI)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,39 +21,19 @@
  * SOFTWARE.
  */
 
-#ifndef AUDIO_PROCESSOR_H
-#define AUDIO_PROCESSOR_H
+#ifndef INI_KV_H
+#define INI_KV_H
 
 #include <stdbool.h>
-#include <stdint.h>
+#include <stddef.h>
+#include <stdio.h>
 
-#define AUDIO_PROCESSOR_VOLUME_MIN 0
-#define AUDIO_PROCESSOR_VOLUME_MAX 100
-#define AUDIO_PROCESSOR_VOLUME_DEFAULT 100
-#define AUDIO_PROCESSOR_FADE_SAMPLES 128
+bool ini_kv_parse_bool(const char *value, bool *out);
+bool ini_kv_get_int(const char *line, const char *key, int *out);
+bool ini_kv_get_string(const char *line, const char *key, char *out, size_t out_len);
 
-struct audio_processor
-{
-	uint8_t volume;
-	bool muted;
-	uint16_t fade_remaining;
-	uint16_t fade_total;
-	int32_t hp_state[2];
-};
+void ini_kv_fprint_int(FILE *f, const char *key, int value);
+void ini_kv_fprint_bool(FILE *f, const char *key, bool value);
+void ini_kv_fprint_string(FILE *f, const char *key, const char *value);
 
-void audio_processor_init(struct audio_processor *proc);
-void audio_processor_reset(struct audio_processor *proc);
-void audio_processor_set_volume(struct audio_processor *proc, uint8_t volume);
-void audio_processor_set_muted(struct audio_processor *proc, bool muted);
-
-/**
- * Apply DC blocking, master volume, mute fade, and S16 clipping in place.
- *
- * \param interleaved  L/R pairs: [L0, R0, L1, R1, ...]
- * \param frame_count  Number of stereo frames (not individual samples).
- */
-void audio_processor_process_s16_stereo(struct audio_processor *proc,
-					int16_t *interleaved,
-					unsigned int frame_count);
-
-#endif /* AUDIO_PROCESSOR_H */
+#endif /* INI_KV_H */

@@ -30,7 +30,7 @@ This produces `walnut-dc.elf`.
 dc-tool -x walnut-dc.elf
 ```
 
-Shows a start screen, then the main menu with **ROM Library**, **Settings**, **Controls**, and **Exit**.
+Shows a start screen, then the main menu with **Continue** (when the last played ROM is still available), **ROM Library**, **Settings**, **Controls**, and **Exit**.
 
 ### ROM library
 
@@ -43,7 +43,7 @@ From the main menu, choose **ROM Library**. Scans these paths (press **B** to cy
 | `/ide/roms`, `/ide` | IDE/GDEMU/ODE |
 | `/pc` | dcload transfer target |
 
-Browser controls (D-pad or analog stick; hold to repeat):
+Browser controls (D-pad or analog stick; hold to repeat). Recent ROMs appear at the top of list view (`*` prefix). L+R cycles All / DMG / GBC filters:
 
 | Button | Action |
 |--------|--------|
@@ -87,11 +87,11 @@ Load `walnut-dc.elf` with a ROM path argument if your loader supports argv, or u
 | B | B |
 | Start | Start |
 | Select | X |
-| D-Pad | D-Pad |
+| D-Pad | D-Pad or analog stick |
 
 | Extra | Action |
 |-------|--------|
-| Start + Y | Pause menu (save/load/settings) |
+| Start + Y | Pause menu (save/load/settings; load resets game) |
 | Start + A | Reset game |
 | Start + B | Return to main menu (menu mode) or exit (direct load) |
 | Y | Cycle palette |
@@ -101,7 +101,7 @@ Load `walnut-dc.elf` with a ROM path argument if your loader supports argv, or u
 
 ## Settings
 
-Accessible from the main menu or pause menu. Video and audio changes apply immediately while the menu is open. Options are saved to `walnut-dc.cfg` on the first writable path (`/pc`, `/sd`, `/ide`, or `/cd`):
+Accessible from the main menu or pause menu. Video and audio changes apply immediately while the menu is open. Options are saved to `pocketdc.cfg` on the first writable path (`/pc`, `/sd`, `/ide`, or `/cd`). Legacy `walnut-dc.cfg` files are still read if present.
 
 | Setting | Description |
 |---------|-------------|
@@ -158,6 +158,6 @@ Phase 3 (ROM browser + disc packaging) is implemented. Phase 4 hardware validati
 
 ## Licensing
 
-PocketDC is MIT licensed. Post-emulation volume and mute processing lives in `extras/audio_processor/` (MIT). MiniGB APU has its own license in `examples/sdl2/minigb_apu/LICENSE`. KOS requires attribution in distributed binaries.
+PocketDC is MIT licensed. Shared MIT modules live in `extras/audio_processor/` (volume/mute/DC block) and `extras/ini_kv/` (config I/O). MiniGB APU has its own license in `examples/sdl2/minigb_apu/LICENSE`. KOS requires attribution in distributed binaries.
 
 Do not ship copyrighted ROMs with homebrew releases.

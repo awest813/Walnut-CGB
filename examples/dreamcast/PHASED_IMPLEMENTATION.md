@@ -1,6 +1,6 @@
-# Walnut-CGB Dreamcast Port — Phased Implementation
+# PocketDC — Phased Implementation
 
-This document tracks the implementation plan for porting **Walnut-CGB** to the Sega Dreamcast via **KallistiOS (KOS)**. The core library (`walnut_cgb.h`) stays unchanged; all platform work lives in `examples/dreamcast/`.
+This document tracks the implementation plan for **PocketDC**, a Dreamcast port of **Walnut-CGB** via **KallistiOS (KOS)**. The core library (`walnut_cgb.h`) stays unchanged; all platform work lives in `examples/dreamcast/`.
 
 ## Feasibility Summary
 
@@ -43,6 +43,7 @@ examples/dreamcast/
 
 MiniGB APU is compiled from `examples/sdl2/minigb_apu/` (shared, not duplicated).
 Master volume and mute run through `extras/audio_processor/` (MIT).
+Config load/save uses `extras/ini_kv/` (MIT); browser device, view, and last ROM persist across sessions.
 
 ## Compile-Time Defines (SH-4)
 
@@ -104,7 +105,7 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 
 - [x] MiniGB APU wired through `snd_stream`
 - [x] Save/load `.sav` to FAT (`/pc`, `/sd`, `/cd`)
-- [x] Error handler writes `recovery.sav`
+- [x] Error handler writes `recovery.sav` (plus normal `.sav` when path is known)
 - [x] Autosave every 60 seconds during play
 - [ ] Boot test: playable session with sound and persistent save
 
@@ -120,12 +121,15 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 - [x] Palette cycling (Y button) and fast-forward (triggers)
 - [x] Frameskip toggle (Start + X)
 - [x] Start+B returns to main menu when launched without ROM argument
-- [x] Start screen and main menu (ROM Library, Settings, Controls, Exit)
+- [x] Start screen and main menu (Continue, ROM Library, Settings, Controls, Exit)
+- [x] Recent ROM history and DMG/GBC filter in ROM browser
+- [x] Config migration from `walnut-dc.cfg` to `pocketdc.cfg`
 - [x] Pause menu with manual save/load (Start + Y)
-- [x] Persistent settings (`walnut-dc.cfg`) with live apply for video/audio
+- [x] Persistent settings (`pocketdc.cfg`) with live apply for video/audio
 - [x] ROM library list/grid views with box art (xero/boxart CC0)
 - [x] Scale modes, status bar HUD, volume/mute, audio buffer modes
 - [x] Toast notifications and controls reference screen
+- [x] Atomic `.sav` writes, pause load with `gb_reset()`, save error feedback
 - [ ] Burn test: self-bootable CDI/GDI on hardware
 
 **Deliverable:** Self-contained CDI/GDI image without PC assistance.
@@ -169,7 +173,7 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 
 | Layer | Method |
 |-------|--------|
-| Core accuracy | Host `make -C test` (unchanged) |
+| Core accuracy | Host `make -C test` (core); `make -C test ci` runs `extras_test` for `ini_kv` and `audio_processor` |
 | DC build | `sh-elf-gcc -Wall -Wextra` clean compile |
 | Functional | cpu_instrs, dmg-acid2 via dcload |
 | Game spot-checks | Tetris, Pokémon Blue, Oracle of Seasons, Shantae |

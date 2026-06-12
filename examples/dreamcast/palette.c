@@ -124,7 +124,7 @@ void dc_auto_assign_palette(struct dc_priv *priv, uint8_t game_checksum)
 			{ 0x3E02, 0x2DE8, 0x1D69, 0x1507 },
 			{ 0x3E02, 0x2DE8, 0x1D69, 0x1507 }
 		};
-		printf("walnut-dc: no palette found for checksum 0x%02X\n", game_checksum);
+		printf("pocketdc: no palette found for checksum 0x%02X\n", game_checksum);
 		memcpy(priv->selected_palette, palette, palette_bytes);
 		break;
 	}

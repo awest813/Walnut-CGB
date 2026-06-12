@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a self-bootable Dreamcast disc image for Walnut-DC.
+# Build a self-bootable Dreamcast disc image for PocketDC.
 #
 # Prerequisites:
 #   - KOS environ.sh sourced
@@ -77,7 +77,7 @@ else
 	exit 1
 fi
 
-"${ISO_TOOL}" -G "${BUILD_DIR}/IP.BIN" -C 0,11702 -V WALNUTDC -r -J -l \
+"${ISO_TOOL}" -G "${BUILD_DIR}/IP.BIN" -C 0,11702 -V POCKETDC -r -J -l \
 	-o "${BUILD_DIR}/walnut-dc.iso" "${ISO_DIR}"
 
 echo "Created ${BUILD_DIR}/walnut-dc.iso"
