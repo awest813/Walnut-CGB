@@ -573,8 +573,10 @@ int main(int argc, char **argv)
 	struct dc_browser browser;
 	char selected_rom[256];
 	bool show_start_menu = true;
+	bool show_migration_toast = false;
 
 	dc_settings_load(&app_settings);
+	show_migration_toast = dc_settings_take_migration_notice();
 	dc_menu_set_settings_apply_callback(dc_on_settings_changed);
 	dc_apply_av_settings();
 	vid_clear(0, 0, 0);
@@ -595,6 +597,9 @@ int main(int argc, char **argv)
 	palette_selection = app_settings.palette_index;
 	dc_browser_init(&browser);
 	dc_browser_apply_persisted(&browser, &app_settings);
+
+	if (show_migration_toast)
+		dc_toast_show("Config upgraded to pocketdc.cfg", 2500);
 
 	if (argc >= 2) {
 		const char *save_path = (argc >= 3) ? argv[2] : NULL;
@@ -635,10 +640,7 @@ int main(int argc, char **argv)
 					break;
 				}
 
-				strncpy(app_settings.last_rom_path, selected_rom,
-					sizeof(app_settings.last_rom_path) - 1);
-				app_settings.last_rom_path[
-					sizeof(app_settings.last_rom_path) - 1] = '\0';
+				dc_settings_push_recent(&app_settings, selected_rom);
 				dc_browser_export_persisted(&browser, &app_settings);
 				dc_settings_save(&app_settings);
 

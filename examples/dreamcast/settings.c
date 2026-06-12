@@ -37,6 +37,8 @@ static const char *dc_settings_write_paths[] = {
 	NULL
 };
 
+static bool dc_settings_pending_migration;
+
 void dc_settings_init_defaults(struct dc_settings *settings)
 {
 	memset(settings, 0, sizeof(*settings));
@@ -52,6 +54,7 @@ void dc_settings_init_defaults(struct dc_settings *settings)
 	settings->audio_buffer = DC_AUDIO_BUFFER_NORMAL;
 	settings->browser_root_index = 0;
 	settings->browser_view = 0;
+	settings->browser_filter = 0;
 }
 
 const char *dc_audio_buffer_name(enum dc_audio_buffer_mode mode)
@@ -91,11 +94,16 @@ static void dc_settings_clamp(struct dc_settings *settings)
 
 	if (settings->browser_view > 1)
 		settings->browser_view = 0;
+
+	if (settings->browser_filter > 2)
+		settings->browser_filter = 0;
 }
 
 static void dc_settings_parse_line(struct dc_settings *settings, const char *line)
 {
 	int value;
+	unsigned int slot;
+	char key[24];
 
 	if (ini_kv_get_int(line, "config_version", &value))
 		return;
@@ -160,9 +168,21 @@ static void dc_settings_parse_line(struct dc_settings *settings, const char *lin
 		return;
 	}
 
+	if (ini_kv_get_int(line, "browser_filter", &value)) {
+		settings->browser_filter = (uint8_t)value;
+		return;
+	}
+
 	if (ini_kv_get_string(line, "last_rom_path", settings->last_rom_path,
 			      sizeof(settings->last_rom_path)))
 		return;
+
+	for (slot = 0; slot < DC_SETTINGS_RECENT_MAX; slot++) {
+		snprintf(key, sizeof(key), "recent_rom_%u", slot);
+		if (ini_kv_get_string(line, key, settings->recent_roms[slot],
+				      sizeof(settings->recent_roms[slot])))
+			return;
+	}
 }
 
 void dc_settings_load(struct dc_settings *settings)
@@ -171,12 +191,16 @@ void dc_settings_load(struct dc_settings *settings)
 	char line[320];
 	unsigned int i;
 
+	dc_settings_pending_migration = false;
 	dc_settings_init_defaults(settings);
 
 	for (i = 0; dc_settings_read_paths[i] != NULL; i++) {
 		f = fopen(dc_settings_read_paths[i], "r");
 		if (!f)
 			continue;
+
+		if (strstr(dc_settings_read_paths[i], "walnut-dc.cfg") != NULL)
+			dc_settings_pending_migration = true;
 
 		while (fgets(line, sizeof(line), f) != NULL) {
 			char *newline = strchr(line, '\n');
@@ -194,6 +218,12 @@ void dc_settings_load(struct dc_settings *settings)
 		break;
 	}
 
+	if (settings->last_rom_path[0] != '\0' &&
+	    settings->recent_roms[0][0] == '\0') {
+		strncpy(settings->recent_roms[0], settings->last_rom_path,
+			sizeof(settings->recent_roms[0]) - 1);
+	}
+
 	dc_settings_clamp(settings);
 }
 
@@ -201,6 +231,9 @@ int dc_settings_save(const struct dc_settings *settings)
 {
 	FILE *f;
 	unsigned int i;
+	unsigned int slot;
+
+	dc_settings_pending_migration = false;
 
 	for (i = 0; dc_settings_write_paths[i] != NULL; i++) {
 		f = fopen(dc_settings_write_paths[i], "w");
@@ -221,10 +254,64 @@ int dc_settings_save(const struct dc_settings *settings)
 		ini_kv_fprint_int(f, "audio_buffer", (int)settings->audio_buffer);
 		ini_kv_fprint_int(f, "browser_root_index", settings->browser_root_index);
 		ini_kv_fprint_int(f, "browser_view", settings->browser_view);
+		ini_kv_fprint_int(f, "browser_filter", settings->browser_filter);
 		ini_kv_fprint_string(f, "last_rom_path", settings->last_rom_path);
+		for (slot = 0; slot < DC_SETTINGS_RECENT_MAX; slot++) {
+			char key[24];
+
+			snprintf(key, sizeof(key), "recent_rom_%u", slot);
+			ini_kv_fprint_string(f, key, settings->recent_roms[slot]);
+		}
 		fclose(f);
 		return 0;
 	}
 
 	return -1;
+}
+
+void dc_settings_push_recent(struct dc_settings *settings, const char *path)
+{
+	unsigned int i;
+	unsigned int write;
+
+	if (!settings || !path || path[0] == '\0')
+		return;
+
+	for (i = 0, write = 0; i < DC_SETTINGS_RECENT_MAX; i++) {
+		if (settings->recent_roms[i][0] == '\0')
+			continue;
+		if (strcmp(settings->recent_roms[i], path) == 0)
+			continue;
+		if (write != i) {
+			strncpy(settings->recent_roms[write], settings->recent_roms[i],
+				sizeof(settings->recent_roms[write]) - 1);
+			settings->recent_roms[write][sizeof(settings->recent_roms[write]) - 1] =
+				'\0';
+		}
+		write++;
+	}
+
+	for (; write < DC_SETTINGS_RECENT_MAX; write++)
+		settings->recent_roms[write][0] = '\0';
+
+	for (i = DC_SETTINGS_RECENT_MAX - 1; i > 0; i--) {
+		strncpy(settings->recent_roms[i], settings->recent_roms[i - 1],
+			sizeof(settings->recent_roms[i]) - 1);
+		settings->recent_roms[i][sizeof(settings->recent_roms[i]) - 1] = '\0';
+	}
+
+	strncpy(settings->recent_roms[0], path,
+		sizeof(settings->recent_roms[0]) - 1);
+	settings->recent_roms[0][sizeof(settings->recent_roms[0]) - 1] = '\0';
+	strncpy(settings->last_rom_path, path, sizeof(settings->last_rom_path) - 1);
+	settings->last_rom_path[sizeof(settings->last_rom_path) - 1] = '\0';
+}
+
+bool dc_settings_take_migration_notice(void)
+{
+	if (!dc_settings_pending_migration)
+		return false;
+
+	dc_settings_pending_migration = false;
+	return true;
 }

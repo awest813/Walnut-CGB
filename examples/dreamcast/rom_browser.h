@@ -27,6 +27,13 @@ enum dc_browser_view
 	DC_BROWSER_VIEW_GRID
 };
 
+enum dc_browser_filter
+{
+	DC_BROWSER_FILTER_ALL = 0,
+	DC_BROWSER_FILTER_DMG,
+	DC_BROWSER_FILTER_GBC
+};
+
 struct dc_browser_entry
 {
 	char path[256];
@@ -49,6 +56,10 @@ struct dc_browser
 	int scroll;
 	int root_index;
 	enum dc_browser_view view;
+	enum dc_browser_filter filter;
+	int display_map[DC_BROWSER_MAX_ENTRIES];
+	bool display_recent[DC_BROWSER_MAX_ENTRIES];
+	int display_count;
 };
 
 struct dc_browser_input
@@ -61,6 +72,7 @@ struct dc_browser_input
 	bool page_up;
 	bool page_down;
 	bool toggle_view;
+	bool cycle_filter;
 	bool exit;
 };
 
