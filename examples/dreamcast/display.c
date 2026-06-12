@@ -69,7 +69,7 @@ int dc_display_init(enum dc_video_output mode)
 		mode = DC_VIDEO_OUTPUT_AUTO;
 
 	vid_set_mode(dm, PM_RGB555);
-	printf("walnut-dc: display %s on %s cable\n",
+	printf("pocketdc: display %s on %s cable\n",
 	       dc_video_output_name(mode), dc_display_cable_name(cable));
 	return 0;
 }

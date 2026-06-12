@@ -13,16 +13,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build tests
-        run: make -C test
+        run: make -C test ci
       - name: Run tests
         id: run_tests
         run: |
           set +e
-          ./test/test > test_output.txt 2>&1
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          : > test_output.txt
+          fail=0
+          ./test/extras_test >> test_output.txt 2>&1 || fail=1
+          echo "exit_code=$fail" >> "$GITHUB_OUTPUT"
           echo 'output<<EOF' >> "$GITHUB_OUTPUT"
           cat test_output.txt >> "$GITHUB_OUTPUT"
           echo 'EOF' >> "$GITHUB_OUTPUT"
+          exit $fail
       - name: Comment on failure
         if: github.event_name == 'pull_request' && steps.run_tests.outputs.exit_code != '0'
         uses: actions/github-script@v7

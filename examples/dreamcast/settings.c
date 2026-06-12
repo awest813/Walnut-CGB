@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "../../extras/ini_kv/ini_kv.h"
+#include "dc_priv.h"
 #include "palette.h"
 #include "settings.h"
 
@@ -314,4 +315,62 @@ bool dc_settings_take_migration_notice(void)
 
 	dc_settings_pending_migration = false;
 	return true;
+}
+
+static bool dc_settings_rom_path_readable(const char *path, long *size_out)
+{
+	FILE *f;
+	long size;
+
+	if (!path || path[0] == '\0')
+		return false;
+
+	f = fopen(path, "rb");
+	if (!f)
+		return false;
+
+	if (fseek(f, 0, SEEK_END) != 0) {
+		fclose(f);
+		return false;
+	}
+
+	size = ftell(f);
+	fclose(f);
+
+	if (size < (long)DC_ROM_HEADER_SIZE || size > (8 * 1024 * 1024))
+		return false;
+
+	if (size_out)
+		*size_out = size;
+
+	return true;
+}
+
+bool dc_settings_can_continue(const struct dc_settings *settings)
+{
+	if (!settings)
+		return false;
+
+	return dc_settings_rom_path_readable(settings->last_rom_path, NULL);
+}
+
+void dc_settings_continue_label(const struct dc_settings *settings, char *out,
+				size_t out_len)
+{
+	const char *basename;
+	const char *slash;
+
+	if (!out || out_len == 0)
+		return;
+
+	out[0] = '\0';
+	if (!settings || settings->last_rom_path[0] == '\0')
+		return;
+
+	basename = settings->last_rom_path;
+	slash = strrchr(settings->last_rom_path, '/');
+	if (slash && slash[1] != '\0')
+		basename = slash + 1;
+
+	snprintf(out, out_len, "Continue: %s", basename);
 }

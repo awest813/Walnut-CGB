@@ -121,7 +121,9 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 - [x] Palette cycling (Y button) and fast-forward (triggers)
 - [x] Frameskip toggle (Start + X)
 - [x] Start+B returns to main menu when launched without ROM argument
-- [x] Start screen and main menu (ROM Library, Settings, Controls, Exit)
+- [x] Start screen and main menu (Continue, ROM Library, Settings, Controls, Exit)
+- [x] Recent ROM history and DMG/GBC filter in ROM browser
+- [x] Config migration from `walnut-dc.cfg` to `pocketdc.cfg`
 - [x] Pause menu with manual save/load (Start + Y)
 - [x] Persistent settings (`pocketdc.cfg`) with live apply for video/audio
 - [x] ROM library list/grid views with box art (xero/boxart CC0)
@@ -170,7 +172,7 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 
 | Layer | Method |
 |-------|--------|
-| Core accuracy | Host `make -C test` (unchanged) |
+| Core accuracy | Host `make -C test` (core); `make -C test ci` runs `extras_test` for `ini_kv` and `audio_processor` |
 | DC build | `sh-elf-gcc -Wall -Wextra` clean compile |
 | Functional | cpu_instrs, dmg-acid2 via dcload |
 | Game spot-checks | Tetris, Pokémon Blue, Oracle of Seasons, Shantae |

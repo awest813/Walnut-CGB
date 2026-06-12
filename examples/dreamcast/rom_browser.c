@@ -837,7 +837,7 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 		return false;
 
 	if (dc_browser_scan(browser) < 0)
-		printf("walnut-dc: unable to scan '%s'\n", browser->root_path);
+		printf("pocketdc: unable to scan '%s'\n", browser->root_path);
 
 	while (1) {
 		const uint64_t frame_start = timer_ms_gettime64();
@@ -970,7 +970,7 @@ int dc_rom_load(struct dc_priv *priv, const char *rom_path)
 
 	f = fopen(rom_path, "rb");
 	if (!f) {
-		printf("walnut-dc: unable to open ROM '%s'\n", rom_path);
+		printf("pocketdc: unable to open ROM '%s'\n", rom_path);
 		return -1;
 	}
 
@@ -982,7 +982,7 @@ int dc_rom_load(struct dc_priv *priv, const char *rom_path)
 	size = ftell(f);
 	if (size < (long)DC_ROM_HEADER_SIZE || size > (8 * 1024 * 1024)) {
 		fclose(f);
-		printf("walnut-dc: invalid ROM size (%ld)\n", size);
+		printf("pocketdc: invalid ROM size (%ld)\n", size);
 		return -1;
 	}
 
@@ -1081,7 +1081,7 @@ int dc_cart_ram_write_file(const char *save_path, const uint8_t *data, size_t le
 
 	f = fopen(save_path, "wb");
 	if (!f) {
-		printf("walnut-dc: unable to write save '%s'\n", save_path);
+		printf("pocketdc: unable to write save '%s'\n", save_path);
 		return -1;
 	}
 

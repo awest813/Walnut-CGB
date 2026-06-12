@@ -14,6 +14,7 @@
 enum dc_main_menu_action
 {
 	DC_MAIN_MENU_NONE = 0,
+	DC_MAIN_MENU_CONTINUE,
 	DC_MAIN_MENU_ROM_LIBRARY,
 	DC_MAIN_MENU_SETTINGS,
 	DC_MAIN_MENU_CONTROLS,
@@ -32,7 +33,7 @@ enum dc_pause_menu_action
 };
 
 bool dc_start_menu_run(void);
-enum dc_main_menu_action dc_main_menu_run(void);
+enum dc_main_menu_action dc_main_menu_run(const struct dc_settings *settings);
 enum dc_pause_menu_action dc_pause_menu_run(const char *rom_title, bool has_save);
 typedef void (*dc_settings_apply_cb)(struct dc_settings *settings);
 

@@ -56,6 +56,9 @@ void dc_settings_load(struct dc_settings *settings);
 int dc_settings_save(const struct dc_settings *settings);
 void dc_settings_push_recent(struct dc_settings *settings, const char *path);
 bool dc_settings_take_migration_notice(void);
+bool dc_settings_can_continue(const struct dc_settings *settings);
+void dc_settings_continue_label(const struct dc_settings *settings, char *out,
+				size_t out_len);
 const char *dc_audio_buffer_name(enum dc_audio_buffer_mode mode);
 
 #endif /* DC_SETTINGS_H */

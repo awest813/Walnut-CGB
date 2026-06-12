@@ -251,7 +251,7 @@ void gb_error(struct gb_s *gb, const enum gb_error_e gb_err, const uint16_t addr
 	if (p->save_size > 0 && p->cart_ram && p->save_path[0] != '\0')
 		dc_cart_ram_write_file(p->save_path, p->cart_ram, p->save_size);
 
-	printf("walnut-dc: emulator error %s\n",
+	printf("pocketdc: emulator error %s\n",
 	       (unsigned int)gb_err < GB_INVALID_MAX ? gb_err_str[gb_err] :
 						      gb_err_str[0]);
 	arch_exit();
@@ -310,13 +310,13 @@ static int dc_init_emulator(struct gb_s *gb, struct dc_priv *p)
 	}
 
 	if (gb_get_save_size_s(gb, &p->save_size) < 0) {
-		printf("walnut-dc: unable to determine save size\n");
+		printf("pocketdc: unable to determine save size\n");
 		return -1;
 	}
 
 	if (p->save_size > 0 && dc_cart_ram_read_file(p->save_path, &p->cart_ram,
 						      p->save_size) != 0) {
-		printf("walnut-dc: unable to allocate cart RAM\n");
+		printf("pocketdc: unable to allocate cart RAM\n");
 		return DC_INIT_ERR_SAVE_ALLOC;
 	}
 
@@ -582,13 +582,13 @@ int main(int argc, char **argv)
 	vid_clear(0, 0, 0);
 
 	if (dc_video_init() != 0) {
-		printf("walnut-dc: video init failed\n");
+		printf("pocketdc: video init failed\n");
 		return EXIT_FAILURE;
 	}
 
 #if ENABLE_SOUND
 	if (dc_audio_init() != 0)
-		printf("walnut-dc: audio init failed, continuing without sound\n");
+		printf("pocketdc: audio init failed, continuing without sound\n");
 	else
 		dc_apply_av_settings();
 #endif
@@ -615,9 +615,21 @@ int main(int argc, char **argv)
 				show_start_menu = false;
 			}
 
-			action = dc_main_menu_run();
+			action = dc_main_menu_run(&app_settings);
 			if (action == DC_MAIN_MENU_EXIT)
 				break;
+
+			if (action == DC_MAIN_MENU_CONTINUE) {
+				strncpy(selected_rom, app_settings.last_rom_path,
+					sizeof(selected_rom) - 1);
+				selected_rom[sizeof(selected_rom) - 1] = '\0';
+				dc_settings_push_recent(&app_settings, selected_rom);
+				dc_settings_save(&app_settings);
+
+				if (!dc_run_game(selected_rom, NULL, true))
+					goto shutdown;
+				continue;
+			}
 
 			if (action == DC_MAIN_MENU_SETTINGS) {
 				dc_settings_menu_run(&app_settings);

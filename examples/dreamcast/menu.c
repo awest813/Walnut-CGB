@@ -232,26 +232,49 @@ void dc_menu_show_message(const char *title, const char *message, int duration_m
 	}
 }
 
-enum dc_main_menu_action dc_main_menu_run(void)
+enum dc_main_menu_action dc_main_menu_run(const struct dc_settings *settings)
 {
-	static const char *items[] = {
-		"ROM Library",
-		"Settings",
-		"Controls",
-		"Exit"
-	};
+	char continue_label[DC_SETTINGS_LAST_ROM_LEN + 16];
+	const char *items[5];
 	struct dc_menu_list menu = {
 		.title = "PocketDC",
 		.subtitle = "Main Menu",
 		.items = items,
-		.count = 4,
+		.count = 0,
 		.selected = 0
 	};
+	const bool show_continue = settings && dc_settings_can_continue(settings);
 	int choice;
+
+	if (show_continue) {
+		dc_settings_continue_label(settings, continue_label,
+					   sizeof(continue_label));
+		items[menu.count++] = continue_label;
+	}
+
+	items[menu.count++] = "ROM Library";
+	items[menu.count++] = "Settings";
+	items[menu.count++] = "Controls";
+	items[menu.count++] = "Exit";
 
 	choice = dc_menu_run_list(&menu, "A:Select  B:Exit");
 	if (choice < 0)
 		return DC_MAIN_MENU_EXIT;
+
+	if (show_continue) {
+		switch (choice) {
+		case 0:
+			return DC_MAIN_MENU_CONTINUE;
+		case 1:
+			return DC_MAIN_MENU_ROM_LIBRARY;
+		case 2:
+			return DC_MAIN_MENU_SETTINGS;
+		case 3:
+			return DC_MAIN_MENU_CONTROLS;
+		default:
+			return DC_MAIN_MENU_EXIT;
+		}
+	}
 
 	switch (choice) {
 	case 0:
@@ -414,6 +437,9 @@ void dc_controls_menu_run(void)
 		"Start+L = Cycle scale mode",
 		"Y = Cycle palette",
 		"L/R = Fast-forward (2x)",
+		"",
+		"Main Menu",
+		"Continue = last played ROM (when available)",
 		"",
 		"Settings (main or pause menu)",
 		"Video output, scale, status bar, audio",

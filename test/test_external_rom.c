@@ -1,6 +1,6 @@
 #define ENABLE_SOUND 0
 #define ENABLE_LCD 0
-#include "../peanut_gb.h"
+#include "../walnut_cgb.h"
 
 #include <assert.h>
 #include <stdio.h>

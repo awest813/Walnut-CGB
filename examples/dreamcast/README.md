@@ -30,7 +30,7 @@ This produces `walnut-dc.elf`.
 dc-tool -x walnut-dc.elf
 ```
 
-Shows a start screen, then the main menu with **ROM Library**, **Settings**, **Controls**, and **Exit**.
+Shows a start screen, then the main menu with **Continue** (when the last played ROM is still available), **ROM Library**, **Settings**, **Controls**, and **Exit**.
 
 ### ROM library
 
