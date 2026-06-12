@@ -18,6 +18,11 @@ void dc_input_init(void)
 	previous_buttons = 0xFFFF;
 }
 
+void dc_input_flush_edges(void)
+{
+	previous_buttons = 0xFFFF;
+}
+
 int dc_input_axis(bool dpad_negative, bool dpad_positive, int16_t analog,
 		  int threshold)
 {
@@ -86,9 +91,12 @@ int dc_input_axis_edge(int axis, int *last_axis)
 	return axis;
 }
 
-static uint8_t dc_buttons_to_joypad(uint32_t buttons)
+static uint8_t dc_buttons_to_joypad(const cont_state_t *pad)
 {
+	const uint32_t buttons = pad->buttons;
 	uint8_t joypad = 0xFF;
+	int vert;
+	int horiz;
 
 	if (buttons & CONT_A)
 		joypad &= (uint8_t)~JOYPAD_A;
@@ -98,13 +106,21 @@ static uint8_t dc_buttons_to_joypad(uint32_t buttons)
 		joypad &= (uint8_t)~JOYPAD_START;
 	if (buttons & CONT_X)
 		joypad &= (uint8_t)~JOYPAD_SELECT;
-	if (buttons & CONT_DPAD_UP)
+
+	vert = dc_input_axis((buttons & CONT_DPAD_UP) != 0,
+			     (buttons & CONT_DPAD_DOWN) != 0, pad->joyy,
+			     DC_INPUT_ANALOG_THRESHOLD);
+	if (vert < 0)
 		joypad &= (uint8_t)~JOYPAD_UP;
-	if (buttons & CONT_DPAD_DOWN)
+	else if (vert > 0)
 		joypad &= (uint8_t)~JOYPAD_DOWN;
-	if (buttons & CONT_DPAD_LEFT)
+
+	horiz = dc_input_axis((buttons & CONT_DPAD_LEFT) != 0,
+			      (buttons & CONT_DPAD_RIGHT) != 0, pad->joyx,
+			      DC_INPUT_ANALOG_THRESHOLD);
+	if (horiz < 0)
 		joypad &= (uint8_t)~JOYPAD_LEFT;
-	if (buttons & CONT_DPAD_RIGHT)
+	else if (horiz > 0)
 		joypad &= (uint8_t)~JOYPAD_RIGHT;
 
 	return joypad;
@@ -168,7 +184,7 @@ void dc_input_poll(struct dc_input_state *state, struct gb_s *gb)
 			state->cycle_scale = true;
 	}
 
-	state->joypad = dc_buttons_to_joypad(buttons);
+	state->joypad = dc_buttons_to_joypad(pad);
 	gb->direct.joypad = state->joypad;
 
 	state->fast_mode = ((buttons & CONT_LTRIGGER) || (buttons & CONT_RTRIGGER)) ? 2 : 1;

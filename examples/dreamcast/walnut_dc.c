@@ -248,8 +248,11 @@ void gb_error(struct gb_s *gb, const enum gb_error_e gb_err, const uint16_t addr
 	};
 
 	(void)addr;
-	if (p->save_size > 0 && p->cart_ram && p->save_path[0] != '\0')
-		dc_cart_ram_write_file(p->save_path, p->cart_ram, p->save_size);
+	if (p->save_size > 0 && p->cart_ram) {
+		dc_cart_ram_write_file("recovery.sav", p->cart_ram, p->save_size);
+		if (p->save_path[0] != '\0')
+			dc_cart_ram_write_file(p->save_path, p->cart_ram, p->save_size);
+	}
 
 	printf("pocketdc: emulator error %s\n",
 	       (unsigned int)gb_err < GB_INVALID_MAX ? gb_err_str[gb_err] :
@@ -335,10 +338,12 @@ static int dc_init_emulator(struct gb_s *gb, struct dc_priv *p)
 	return 0;
 }
 
-static void dc_write_save(struct dc_priv *p)
+static bool dc_write_save(struct dc_priv *p)
 {
-	if (p->save_size > 0 && p->cart_ram && p->save_path[0] != '\0')
-		dc_cart_ram_write_file(p->save_path, p->cart_ram, p->save_size);
+	if (p->save_size == 0 || !p->cart_ram || p->save_path[0] == '\0')
+		return true;
+
+	return dc_cart_ram_write_file(p->save_path, p->cart_ram, p->save_size) == 0;
 }
 
 /*
@@ -348,31 +353,41 @@ static int dc_handle_pause_menu(struct gb_s *gb, bool menu_mode)
 {
 	char rom_title[17];
 	enum dc_pause_menu_action action;
-	const bool has_save = priv.save_size > 0 && priv.cart_ram != NULL;
+	const bool can_save = priv.save_size > 0 && priv.cart_ram != NULL;
+	const bool can_load = can_save &&
+			      dc_save_file_exists(priv.save_path);
 
 	gb_get_rom_name(gb, rom_title);
 	rom_title[sizeof(rom_title) - 1] = '\0';
 
+	dc_input_flush_edges();
+
 	while (1) {
-		action = dc_pause_menu_run(rom_title, has_save);
+		action = dc_pause_menu_run(rom_title, can_save, can_load);
 
 		switch (action) {
 		case DC_PAUSE_MENU_RESUME:
 			return 1;
 		case DC_PAUSE_MENU_SAVE:
-			dc_write_save(&priv);
-			dc_menu_show_message("Save Game", "Game saved.", 1200);
+			if (dc_write_save(&priv))
+				dc_menu_show_message("Save Game", "Game saved.", 1200);
+			else
+				dc_menu_show_message("Save Game",
+						     "Unable to write save file.",
+						     1500);
 			break;
 		case DC_PAUSE_MENU_LOAD:
-			if (has_save) {
+			if (can_save) {
 				if (dc_cart_ram_reload_file(priv.save_path, priv.cart_ram,
-							    priv.save_size) == 0)
+							    priv.save_size) == 0) {
+					gb_reset(gb);
 					dc_menu_show_message("Load Game",
 							     "Save loaded.", 1200);
-				else
+				} else {
 					dc_menu_show_message("Load Game",
 							     "No save file found.",
 							     1500);
+				}
 			}
 			break;
 		case DC_PAUSE_MENU_SETTINGS:
@@ -487,6 +502,7 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 		if (input.pause_requested) {
 			paused = true;
 			gb.direct.joypad = 0xFF;
+			dc_input_flush_edges();
 		}
 		if (input.exit_requested) {
 			running = false;
@@ -543,8 +559,10 @@ static bool dc_run_game(const char *rom_path, const char *save_path, bool menu_m
 		}
 
 		if (save_timer > 0 && priv.save_size > 0 && --save_timer <= 0) {
-			dc_write_save(&priv);
-			dc_toast_show("Autosaved", 1200);
+			if (dc_write_save(&priv))
+				dc_toast_show("Autosaved", 1200);
+			else
+				dc_toast_show("Autosave failed", 1500);
 			save_timer = dc_autosave_interval_frames();
 		}
 
@@ -574,6 +592,7 @@ int main(int argc, char **argv)
 	char selected_rom[256];
 	bool show_start_menu = true;
 	bool show_migration_toast = false;
+	bool audio_init_failed = false;
 
 	dc_settings_load(&app_settings);
 	show_migration_toast = dc_settings_take_migration_notice();
@@ -587,10 +606,12 @@ int main(int argc, char **argv)
 	}
 
 #if ENABLE_SOUND
-	if (dc_audio_init() != 0)
+	if (dc_audio_init() != 0) {
 		printf("pocketdc: audio init failed, continuing without sound\n");
-	else
+		audio_init_failed = true;
+	} else {
 		dc_apply_av_settings();
+	}
 #endif
 
 	dc_input_init();
@@ -600,6 +621,8 @@ int main(int argc, char **argv)
 
 	if (show_migration_toast)
 		dc_toast_show("Config upgraded to pocketdc.cfg", 2500);
+	if (audio_init_failed)
+		dc_toast_show("Audio init failed — no sound", 3000);
 
 	if (argc >= 2) {
 		const char *save_path = (argc >= 3) ? argv[2] : NULL;

@@ -105,7 +105,7 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 
 - [x] MiniGB APU wired through `snd_stream`
 - [x] Save/load `.sav` to FAT (`/pc`, `/sd`, `/cd`)
-- [x] Error handler writes `recovery.sav`
+- [x] Error handler writes `recovery.sav` (plus normal `.sav` when path is known)
 - [x] Autosave every 60 seconds during play
 - [ ] Boot test: playable session with sound and persistent save
 
@@ -129,6 +129,7 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 - [x] ROM library list/grid views with box art (xero/boxart CC0)
 - [x] Scale modes, status bar HUD, volume/mute, audio buffer modes
 - [x] Toast notifications and controls reference screen
+- [x] Atomic `.sav` writes, pause load with `gb_reset()`, save error feedback
 - [ ] Burn test: self-bootable CDI/GDI on hardware
 
 **Deliverable:** Self-contained CDI/GDI image without PC assistance.

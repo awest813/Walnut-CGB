@@ -30,6 +30,8 @@ struct dc_input_state
 };
 
 void dc_input_init(void);
+/** Clear held-button edge state after context switches (game ↔ menu). */
+void dc_input_flush_edges(void);
 void dc_input_poll(struct dc_input_state *state, struct gb_s *gb);
 
 /**

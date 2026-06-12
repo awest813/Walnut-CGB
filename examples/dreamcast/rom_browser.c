@@ -661,12 +661,29 @@ void dc_browser_show_loading(const char *rom_name)
 	}
 }
 
+static uint32_t dc_browser_previous_buttons = 0xFFFF;
+static int dc_browser_t_up;
+static int dc_browser_t_down;
+static int dc_browser_t_left;
+static int dc_browser_t_right;
+
+static void dc_browser_flush_input(void)
+{
+	dc_input_flush_edges();
+	dc_browser_previous_buttons = 0xFFFF;
+	dc_browser_t_up = dc_browser_t_down = 0;
+	dc_browser_t_left = dc_browser_t_right = 0;
+}
+
 static void dc_browser_poll_input(struct dc_browser *browser,
 				  struct dc_browser_input *input)
 {
 	maple_device_t *controller = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
-	static uint32_t previous_buttons = 0xFFFF;
-	static int t_up, t_down, t_left, t_right;
+	uint32_t previous_buttons = dc_browser_previous_buttons;
+	int t_up = dc_browser_t_up;
+	int t_down = dc_browser_t_down;
+	int t_left = dc_browser_t_left;
+	int t_right = dc_browser_t_right;
 	cont_state_t *pad;
 	uint32_t buttons;
 	uint32_t changed;
@@ -712,12 +729,17 @@ static void dc_browser_poll_input(struct dc_browser *browser,
 	    (changed & (CONT_LTRIGGER | CONT_RTRIGGER)))
 		input->cycle_filter = true;
 
-	previous_buttons = buttons;
+	dc_browser_previous_buttons = buttons;
+	dc_browser_t_up = t_up;
+	dc_browser_t_down = t_down;
+	dc_browser_t_left = t_left;
+	dc_browser_t_right = t_right;
 	return;
 
 release:
-	t_up = t_down = t_left = t_right = 0;
-	previous_buttons = 0xFFFF;
+	dc_browser_t_up = dc_browser_t_down = 0;
+	dc_browser_t_left = dc_browser_t_right = 0;
+	dc_browser_previous_buttons = 0xFFFF;
 }
 
 static int dc_browser_visible_slots(const struct dc_browser *browser)
@@ -838,6 +860,8 @@ bool dc_browser_run(struct dc_browser *browser, char *selected_path,
 
 	if (dc_browser_scan(browser) < 0)
 		printf("pocketdc: unable to scan '%s'\n", browser->root_path);
+
+	dc_browser_flush_input();
 
 	while (1) {
 		const uint64_t frame_start = timer_ms_gettime64();
@@ -1072,14 +1096,32 @@ int dc_cart_ram_reload_file(const char *save_path, uint8_t *dest, size_t len)
 	return 0;
 }
 
+bool dc_save_file_exists(const char *save_path)
+{
+	FILE *f;
+
+	if (!save_path || save_path[0] == '\0')
+		return false;
+
+	f = fopen(save_path, "rb");
+	if (!f)
+		return false;
+
+	fclose(f);
+	return true;
+}
+
 int dc_cart_ram_write_file(const char *save_path, const uint8_t *data, size_t len)
 {
+	char tmp_path[272];
 	FILE *f;
 
 	if (!save_path || !data || len == 0)
 		return 0;
 
-	f = fopen(save_path, "wb");
+	snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", save_path);
+
+	f = fopen(tmp_path, "wb");
 	if (!f) {
 		printf("pocketdc: unable to write save '%s'\n", save_path);
 		return -1;
@@ -1087,9 +1129,24 @@ int dc_cart_ram_write_file(const char *save_path, const uint8_t *data, size_t le
 
 	if (fwrite(data, 1, len, f) != len) {
 		fclose(f);
+		remove(tmp_path);
+		return -1;
+	}
+
+	if (fflush(f) != 0) {
+		fclose(f);
+		remove(tmp_path);
 		return -1;
 	}
 
 	fclose(f);
+
+	remove(save_path);
+	if (rename(tmp_path, save_path) != 0) {
+		printf("pocketdc: unable to finalize save '%s'\n", save_path);
+		remove(tmp_path);
+		return -1;
+	}
+
 	return 0;
 }

@@ -82,6 +82,7 @@ int dc_save_path_from_rom(const char *rom_path, char *save_path, size_t save_pat
 int dc_cart_ram_read_file(const char *save_path, uint8_t **dest, size_t len);
 int dc_cart_ram_reload_file(const char *save_path, uint8_t *dest, size_t len);
 int dc_cart_ram_write_file(const char *save_path, const uint8_t *data, size_t len);
+bool dc_save_file_exists(const char *save_path);
 
 void dc_browser_init(struct dc_browser *browser);
 void dc_browser_apply_persisted(struct dc_browser *browser,

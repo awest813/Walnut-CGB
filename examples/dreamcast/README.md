@@ -87,11 +87,11 @@ Load `walnut-dc.elf` with a ROM path argument if your loader supports argv, or u
 | B | B |
 | Start | Start |
 | Select | X |
-| D-Pad | D-Pad |
+| D-Pad | D-Pad or analog stick |
 
 | Extra | Action |
 |-------|--------|
-| Start + Y | Pause menu (save/load/settings) |
+| Start + Y | Pause menu (save/load/settings; load resets game) |
 | Start + A | Reset game |
 | Start + B | Return to main menu (menu mode) or exit (direct load) |
 | Y | Cycle palette |
