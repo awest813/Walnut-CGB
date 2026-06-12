@@ -26,7 +26,7 @@ examples/dreamcast/
 ├── video.c / video.h          # PVR texture upload, scale modes, overlays
 ├── display.c / display.h      # VGA/TV/auto video output
 ├── audio.c / audio.h          # snd_stream + MiniGB APU bridge
-│   (uses extras/audio_processor/ for master volume and mute)
+│   (extras/audio_processor/ for volume/mute, extras/audio_ring/ for buffering)
 ├── input.c / input.h          # Maple controller → joypad
 ├── rom_browser.c / rom_browser.h  # ROM/save file I/O and ROM library UI
 ├── cover.c / cover.h          # W555 box art + procedural placeholders
@@ -42,7 +42,10 @@ examples/dreamcast/
 ```
 
 MiniGB APU is compiled from `examples/sdl2/minigb_apu/` (shared, not duplicated).
-Master volume and mute run through `extras/audio_processor/` (MIT).
+Master volume and mute run through `extras/audio_processor/` (MIT). APU output is
+buffered through `extras/audio_ring/` (MIT), which primes a latency cushion,
+silence-pads consumer underruns, and drops the oldest frames on overrun to keep
+AICA fed without persistent crackle.
 Config load/save uses `extras/ini_kv/` (MIT); browser device, view, and last ROM persist across sessions.
 
 ## Compile-Time Defines (SH-4)
@@ -66,7 +69,7 @@ Config load/save uses `extras/ini_kv/` (MIT); browser device, view, and last ROM
 | ROM buffer | 32 KB – 4 MB |
 | Cart RAM / save | 0 – 128 KB |
 | Framebuffer RGB555 | 46 KB |
-| Audio ring buffer | ~16 KB |
+| Audio ring + stream buffers | ~144 KB (static) |
 | PVR texture (256×256) | 128 KB |
 | **Total typical** | **< 6 MB** of 16 MB |
 
@@ -173,7 +176,7 @@ dc-tool -x walnut-dc.elf /pc/roms/game.gb
 
 | Layer | Method |
 |-------|--------|
-| Core accuracy | Host `make -C test` (core); `make -C test ci` runs `extras_test` for `ini_kv` and `audio_processor` |
+| Core accuracy | Host `make -C test` (core); `make -C test ci` runs `extras_test` for `ini_kv`, `audio_processor`, and `audio_ring` |
 | DC build | `sh-elf-gcc -Wall -Wextra` clean compile |
 | Functional | cpu_instrs, dmg-acid2 via dcload |
 | Game spot-checks | Tetris, Pokémon Blue, Oracle of Seasons, Shantae |
