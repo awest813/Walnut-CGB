@@ -27,13 +27,19 @@
 #include <stdint.h>
 
 /*
- * Single-producer / single-consumer ring buffer for interleaved 16-bit stereo
- * frames ([L0, R0, L1, R1, ...]). The producer pushes a fixed-size block per
- * emulated video frame; the consumer (audio hardware callback) pops whatever
- * the DMA needs. The two cadences never match exactly, so the buffer absorbs
- * jitter with a latency cushion, pads consumer underruns with silence, and
- * drops the oldest frames on overrun — counting both so callers can monitor
- * health. The caller owns the sample storage (capacity * 2 int16_t).
+ * Interleaved 16-bit stereo frame buffer ([L0, R0, L1, R1, ...]). The producer
+ * pushes a fixed-size block per emulated video frame; the consumer (audio
+ * hardware callback) pops whatever the DMA needs. The two cadences never match
+ * exactly, so the buffer absorbs jitter with a latency cushion, pads consumer
+ * underruns with silence, and drops the oldest frames on overrun — counting
+ * both so callers can monitor health. The caller owns the sample storage
+ * (capacity * 2 int16_t).
+ *
+ * NOT thread-safe / not lock-free: on overrun the producer advances the
+ * consumer's read index, so push() and pop() must not run concurrently. Both
+ * frontends serialize them (the Dreamcast pops inside snd_stream_poll() on the
+ * same thread that pushes; the SDL callback both pushes and pops on the audio
+ * thread). Add external locking before sharing one ring across threads.
  */
 struct audio_ring
 {
@@ -51,7 +57,7 @@ struct audio_ring
  *
  * \param buf        Storage for capacity * 2 interleaved samples.
  * \param capacity   Storage size in stereo frames (must be >= 2).
- * \param target     Latency cushion in frames; clamped to capacity - 1.
+ * \param target     Latency cushion in frames; clamped to capacity / 2.
  */
 void audio_ring_init(struct audio_ring *r, int16_t *buf, unsigned int capacity,
 		     unsigned int target);

@@ -38,9 +38,13 @@ void audio_ring_init(struct audio_ring *r, int16_t *buf, unsigned int capacity,
 	r->underruns = 0;
 	r->overruns = 0;
 
-	/* One slot stays empty so write == read always means "empty". */
-	if (r->capacity && target > r->capacity - 1)
-		target = r->capacity - 1;
+	/*
+	 * One slot stays empty so write == read always means "empty". Cap the
+	 * cushion at half the buffer so priming always leaves room to push;
+	 * otherwise the very first push would overrun the just-primed cushion.
+	 */
+	if (r->capacity && target > r->capacity / 2)
+		target = r->capacity / 2;
 	r->target = target;
 
 	audio_ring_prime(r, r->target);
@@ -75,9 +79,21 @@ void audio_ring_reset(struct audio_ring *r)
 	audio_ring_prime(r, r->target);
 }
 
+/* Frames from `write` to the end of the buffer before the index wraps. */
+static unsigned int audio_ring_write_run(const struct audio_ring *r)
+{
+	return r->capacity - r->write;
+}
+
+/* Frames from `read` to the end of the buffer before the index wraps. */
+static unsigned int audio_ring_read_run(const struct audio_ring *r)
+{
+	return r->capacity - r->read;
+}
+
 void audio_ring_prime(struct audio_ring *r, unsigned int frames)
 {
-	unsigned int i;
+	unsigned int first;
 
 	if (!r || !r->capacity)
 		return;
@@ -85,51 +101,60 @@ void audio_ring_prime(struct audio_ring *r, unsigned int frames)
 	if (frames > audio_ring_free(r))
 		frames = audio_ring_free(r);
 
-	for (i = 0; i < frames; i++) {
-		r->buf[r->write * 2] = 0;
-		r->buf[r->write * 2 + 1] = 0;
-		r->write = (r->write + 1) % r->capacity;
-	}
+	/* Zero in at most two contiguous runs, wrapping once. */
+	first = audio_ring_write_run(r);
+	if (first > frames)
+		first = frames;
+
+	memset(&r->buf[r->write * 2], 0, (size_t)first * 2 * sizeof(int16_t));
+	if (frames > first)
+		memset(&r->buf[0], 0,
+		       (size_t)(frames - first) * 2 * sizeof(int16_t));
+
+	r->write = (r->write + frames) % r->capacity;
 }
 
 void audio_ring_push(struct audio_ring *r, const int16_t *src,
 		     unsigned int frames)
 {
-	unsigned int i;
+	unsigned int room;
+	unsigned int first;
 
 	if (!r || !r->capacity || !src)
 		return;
 
 	/*
 	 * The producer is authoritative: if the buffer cannot hold this block,
-	 * drop the oldest queued frames rather than the freshest. Dropping at
-	 * most a block keeps the discontinuity short and the cushion intact.
+	 * drop the oldest queued frames rather than the freshest. A block that
+	 * alone exceeds the buffer keeps only its newest capacity-1 frames.
 	 */
 	if (frames >= r->capacity) {
-		/* Block alone exceeds the buffer; keep only its newest tail. */
 		const unsigned int keep = r->capacity - 1;
 
 		r->overruns += frames - keep;
 		src += (frames - keep) * 2;
 		frames = keep;
-		r->read = 0;
-		r->write = 0;
-	} else {
-		unsigned int room = audio_ring_free(r);
-
-		if (frames > room) {
-			const unsigned int drop = frames - room;
-
-			r->overruns += drop;
-			r->read = (r->read + drop) % r->capacity;
-		}
 	}
 
-	for (i = 0; i < frames; i++) {
-		r->buf[r->write * 2] = src[i * 2];
-		r->buf[r->write * 2 + 1] = src[i * 2 + 1];
-		r->write = (r->write + 1) % r->capacity;
+	room = audio_ring_free(r);
+	if (frames > room) {
+		const unsigned int drop = frames - room;
+
+		r->overruns += drop;
+		r->read = (r->read + drop) % r->capacity;
 	}
+
+	/* Copy in at most two contiguous runs, wrapping once. */
+	first = audio_ring_write_run(r);
+	if (first > frames)
+		first = frames;
+
+	memcpy(&r->buf[r->write * 2], src, (size_t)first * 2 * sizeof(int16_t));
+	if (frames > first)
+		memcpy(&r->buf[0], &src[first * 2],
+		       (size_t)(frames - first) * 2 * sizeof(int16_t));
+
+	r->write = (r->write + frames) % r->capacity;
 }
 
 unsigned int audio_ring_pop(struct audio_ring *r, int16_t *dst,
@@ -141,17 +166,29 @@ unsigned int audio_ring_pop(struct audio_ring *r, int16_t *dst,
 		return 0;
 
 	if (r && r->capacity) {
-		while (popped < frames && r->read != r->write) {
-			dst[popped * 2] = r->buf[r->read * 2];
-			dst[popped * 2 + 1] = r->buf[r->read * 2 + 1];
-			r->read = (r->read + 1) % r->capacity;
-			popped++;
-		}
+		const unsigned int avail = audio_ring_used(r);
+		unsigned int first;
+
+		popped = (frames < avail) ? frames : avail;
+
+		/* Copy in at most two contiguous runs, wrapping once. */
+		first = audio_ring_read_run(r);
+		if (first > popped)
+			first = popped;
+
+		memcpy(dst, &r->buf[r->read * 2],
+		       (size_t)first * 2 * sizeof(int16_t));
+		if (popped > first)
+			memcpy(&dst[first * 2], &r->buf[0],
+			       (size_t)(popped - first) * 2 * sizeof(int16_t));
+
+		r->read = (r->read + popped) % r->capacity;
 
 		if (popped < frames)
 			r->underruns += frames - popped;
 	}
 
+	/* Silence-pad any shortfall so dst always holds `frames` frames. */
 	if (popped < frames)
 		memset(&dst[popped * 2], 0,
 		       (size_t)(frames - popped) * 2 * sizeof(int16_t));
