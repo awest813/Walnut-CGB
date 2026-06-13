@@ -22,6 +22,7 @@
 #elif defined(ENABLE_SOUND_MINIGB)
 #	include "minigb_apu/minigb_apu.h"
 #	include "../../extras/audio_processor/audio_processor.h"
+#	include "../../extras/audio_ring/audio_ring.h"
 #endif
 
 uint8_t audio_read(uint16_t addr);
@@ -55,6 +56,17 @@ struct priv_t
 
 static struct minigb_apu_ctx apu;
 static struct audio_processor audio_proc;
+/*
+ * Decouple the SDL device buffer size from the APU's fixed block size: the APU
+ * is pumped on demand into this ring, and the callback pops exactly what the
+ * device asked for (silence-padding any shortfall). Sized to hold a large
+ * device buffer plus headroom for one spare APU block; no startup cushion is
+ * needed because production is gated by consumption. A literal keeps the
+ * file-scope array a compile-time constant (AUDIO_SAMPLES is not).
+ */
+#define SDL_AUDIO_RING_FRAMES 10240
+static struct audio_ring audio_ring_buf;
+static int16_t audio_ring_storage[SDL_AUDIO_RING_FRAMES * 2];
 
 /**
  * Returns a byte from the ROM file at the given address.
@@ -150,12 +162,28 @@ void audio_callback(void *ptr, uint8_t *data, int len)
 {
 	const unsigned int frame_count =
 		(unsigned int)len / (int)sizeof(int16_t) / AUDIO_CHANNELS;
+	unsigned int popped;
 
 	(void)ptr;
-	minigb_apu_audio_callback(&apu, (void *)data);
-	if (frame_count > 0)
+
+	/*
+	 * Top up the ring one APU block at a time until it can satisfy this
+	 * request, stopping early if the ring lacks room for a full block (only
+	 * possible when the device asks for more than the ring holds). Gating
+	 * production on demand keeps the APU running at the consumption rate.
+	 */
+	while (audio_ring_used(&audio_ring_buf) < frame_count &&
+	       audio_ring_free(&audio_ring_buf) >= AUDIO_SAMPLES) {
+		int16_t block[AUDIO_SAMPLES_TOTAL];
+
+		minigb_apu_audio_callback(&apu, block);
+		audio_ring_push(&audio_ring_buf, block, AUDIO_SAMPLES);
+	}
+
+	popped = audio_ring_pop(&audio_ring_buf, (int16_t *)data, frame_count);
+	if (popped > 0)
 		audio_processor_process_s16_stereo(&audio_proc, (int16_t *)data,
-						 frame_count);
+						 popped);
 }
 
 void read_cart_ram_file(const char *save_file_name, uint8_t **dest,
@@ -989,6 +1017,8 @@ int main(int argc, char **argv)
 
 		minigb_apu_audio_init(&apu);
 		audio_processor_init(&audio_proc);
+		audio_ring_init(&audio_ring_buf, audio_ring_storage,
+				SDL_AUDIO_RING_FRAMES, 0);
 		SDL_PauseAudioDevice(dev, 0);
 	}
 #endif

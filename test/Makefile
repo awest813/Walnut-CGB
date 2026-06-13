@@ -5,6 +5,7 @@ override CFLAGS += $(OPT) -Wall -Wextra
 EXTRAS_DIR := ../extras
 INI_KV_SRC := $(EXTRAS_DIR)/ini_kv/ini_kv.c
 AUDIO_PROCESSOR_SRC := $(EXTRAS_DIR)/audio_processor/audio_processor.c
+AUDIO_RING_SRC := $(EXTRAS_DIR)/audio_ring/audio_ring.c
 
 .PHONY: all ci
 all: extras_test test test_so
@@ -15,17 +16,20 @@ test: test.c walnut_cgb.o
 test_so: test.c walnut_cgb.o
 	$(CC) $^ -o $@ -DPEANUT_GB_HEADER_ONLY $(CFLAGS)
 
-extras_test: extras_test.o ini_kv.o audio_processor.o
+extras_test: extras_test.o ini_kv.o audio_processor.o audio_ring.o
 	$(CC) $^ -o $@ $(CFLAGS) -lm
 
 extras_test.o: extras_test.c
-	$(CC) -c $< -o $@ $(CFLAGS) -I$(EXTRAS_DIR)/ini_kv -I$(EXTRAS_DIR)/audio_processor
+	$(CC) -c $< -o $@ $(CFLAGS) -I$(EXTRAS_DIR)/ini_kv -I$(EXTRAS_DIR)/audio_processor -I$(EXTRAS_DIR)/audio_ring
 
 ini_kv.o: $(INI_KV_SRC)
 	$(CC) -c $< -o $@ $(CFLAGS) -I$(EXTRAS_DIR)/ini_kv
 
 audio_processor.o: $(AUDIO_PROCESSOR_SRC)
 	$(CC) -c $< -o $@ $(CFLAGS) -I$(EXTRAS_DIR)/audio_processor
+
+audio_ring.o: $(AUDIO_RING_SRC)
+	$(CC) -c $< -o $@ $(CFLAGS) -I$(EXTRAS_DIR)/audio_ring
 
 test_external_rom: test_external_rom.c
 	$(CC) $^ -o $@ $(CFLAGS)

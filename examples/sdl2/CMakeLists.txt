@@ -38,8 +38,14 @@ ADD_EXECUTABLE(${PROJECT_NAME} ${EXE_TARGET_TYPE})
 TARGET_SOURCES(${PROJECT_NAME} PRIVATE walnut_sdl.c
     ../../walnut_cgb.h
     minigb_apu/minigb_apu.c
-    minigb_apu/minigb_apu.h)
-TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ../../)
+    minigb_apu/minigb_apu.h
+    ../../extras/audio_processor/audio_processor.c
+    ../../extras/audio_processor/audio_processor.h
+    ../../extras/audio_ring/audio_ring.c
+    ../../extras/audio_ring/audio_ring.h)
+TARGET_INCLUDE_DIRECTORIES(${PROJECT_NAME} PRIVATE ../../
+    ../../extras/audio_processor
+    ../../extras/audio_ring)
 
 # Discover libraries
 IF(MSVC)

@@ -11,107 +11,79 @@
 #include <dc/sound/stream.h>
 
 #include "../../extras/audio_processor/audio_processor.h"
+#include "../../extras/audio_ring/audio_ring.h"
 
 #define AUDIO_SAMPLE_RATE 44100
 #define MINIGB_APU_AUDIO_FORMAT_S16SYS
 #include "../sdl2/minigb_apu/minigb_apu.h"
 
-#define DC_AUDIO_RING_MAX_SAMPLES 32768
+#define DC_AUDIO_RING_MAX_FRAMES 32768
 #define DC_AUDIO_STEREO_FRAME_BYTES (sizeof(int16_t) * AUDIO_CHANNELS)
+#define DC_AUDIO_STREAM_MAX_FRAMES 4096
 
 static struct minigb_apu_ctx apu;
 static snd_stream_hnd_t stream = SND_STREAM_INVALID;
 static bool audio_active;
-static int16_t ring[DC_AUDIO_RING_MAX_SAMPLES * 2];
-static unsigned int ring_capacity = 16384;
-static unsigned int ring_read;
-static unsigned int ring_write;
+static int16_t ring_storage[DC_AUDIO_RING_MAX_FRAMES * 2];
+static struct audio_ring ring;
 static struct audio_processor processor;
-static int16_t stream_buf[4096 * 2] __attribute__((aligned(32)));
+static int16_t stream_buf[DC_AUDIO_STREAM_MAX_FRAMES * 2] __attribute__((aligned(32)));
 
-static unsigned int dc_audio_ring_capacity_for_mode(enum dc_audio_buffer_mode mode)
+/*
+ * Capacity sizes the worst-case backlog; target is the latency cushion the
+ * buffer is primed to and tries to hold, trading delay for resistance to
+ * underrun-driven crackle. Both are in stereo frames.
+ */
+static void dc_audio_ring_bounds_for_mode(enum dc_audio_buffer_mode mode,
+					  unsigned int *capacity,
+					  unsigned int *target)
 {
 	switch (mode) {
 	case DC_AUDIO_BUFFER_LOW:
-		return 4096;
+		*capacity = 4096;
+		*target = AUDIO_SAMPLES;          /* ~1 frame of cushion */
+		break;
 	case DC_AUDIO_BUFFER_HIGH:
-		return DC_AUDIO_RING_MAX_SAMPLES;
+		*capacity = DC_AUDIO_RING_MAX_FRAMES;
+		*target = AUDIO_SAMPLES * 4U;     /* ~4 frames of cushion */
+		break;
 	case DC_AUDIO_BUFFER_NORMAL:
 	default:
-		return 16384;
+		*capacity = 16384;
+		*target = AUDIO_SAMPLES * 2U;     /* ~2 frames of cushion */
+		break;
 	}
-}
-
-static unsigned int dc_audio_ring_used(void)
-{
-	if (ring_write >= ring_read)
-		return ring_write - ring_read;
-	return ring_capacity - ring_read + ring_write;
-}
-
-static unsigned int dc_audio_ring_free(void)
-{
-	return ring_capacity - dc_audio_ring_used() - 1;
-}
-
-static void dc_audio_ring_reset(void)
-{
-	ring_read = 0;
-	ring_write = 0;
-}
-
-static void dc_audio_ring_push(const int16_t *samples, unsigned int count)
-{
-	unsigned int i;
-
-	for (i = 0; i < count; i++) {
-		ring[ring_write * 2] = samples[i * 2];
-		ring[ring_write * 2 + 1] = samples[i * 2 + 1];
-		ring_write = (ring_write + 1) % ring_capacity;
-	}
-}
-
-static unsigned int dc_audio_ring_pop(int16_t *dst, unsigned int count)
-{
-	unsigned int i;
-	unsigned int popped = 0;
-
-	for (i = 0; i < count && ring_read != ring_write; i++) {
-		dst[i * 2] = ring[ring_read * 2];
-		dst[i * 2 + 1] = ring[ring_read * 2 + 1];
-		ring_read = (ring_read + 1) % ring_capacity;
-		popped++;
-	}
-
-	audio_processor_process_s16_stereo(&processor, dst, popped);
-	return popped;
-}
-
-static void dc_audio_ring_make_room(unsigned int frames)
-{
-	while (dc_audio_ring_free() < frames && ring_read != ring_write)
-		ring_read = (ring_read + 1) % ring_capacity;
 }
 
 static void *dc_audio_stream_callback(snd_stream_hnd_t hnd, int smp_req, int *smp_recv)
 {
-	const unsigned int frames_requested = (unsigned int)smp_req / DC_AUDIO_STEREO_FRAME_BYTES;
-	unsigned int frames_written;
+	unsigned int frames_requested = (unsigned int)smp_req / DC_AUDIO_STEREO_FRAME_BYTES;
+	unsigned int frames_popped;
 
 	(void)hnd;
 
-	memset(stream_buf, 0, sizeof(stream_buf));
-	frames_written = dc_audio_ring_pop(stream_buf, frames_requested);
-	*smp_recv = (int)(frames_written * DC_AUDIO_STEREO_FRAME_BYTES);
+	if (frames_requested > DC_AUDIO_STREAM_MAX_FRAMES)
+		frames_requested = DC_AUDIO_STREAM_MAX_FRAMES;
+
+	/* Always hand back a full buffer; the ring silence-pads any shortfall. */
+	frames_popped = audio_ring_pop(&ring, stream_buf, frames_requested);
+	audio_processor_process_s16_stereo(&processor, stream_buf, frames_popped);
+
+	*smp_recv = (int)(frames_requested * DC_AUDIO_STEREO_FRAME_BYTES);
 	return stream_buf;
 }
 
 int dc_audio_init(void)
 {
-	dc_audio_ring_reset();
+	unsigned int capacity;
+	unsigned int target;
+
 	audio_active = false;
 	audio_processor_init(&processor);
 	minigb_apu_audio_init(&apu);
+
+	dc_audio_ring_bounds_for_mode(DC_AUDIO_BUFFER_NORMAL, &capacity, &target);
+	audio_ring_init(&ring, ring_storage, capacity, target);
 
 	snd_stream_init();
 	stream = snd_stream_alloc(dc_audio_stream_callback, 0x4000);
@@ -137,15 +109,16 @@ void dc_audio_shutdown(void)
 void dc_audio_configure(uint8_t volume, bool muted,
 			enum dc_audio_buffer_mode buffer_mode)
 {
-	const unsigned int new_capacity =
-		dc_audio_ring_capacity_for_mode(buffer_mode);
+	unsigned int capacity;
+	unsigned int target;
 
 	audio_processor_set_volume(&processor, volume);
 	audio_processor_set_muted(&processor, muted);
 
-	if (new_capacity != ring_capacity) {
-		ring_capacity = new_capacity;
-		dc_audio_ring_reset();
+	dc_audio_ring_bounds_for_mode(buffer_mode, &capacity, &target);
+
+	if (capacity != ring.capacity || target != ring.target) {
+		audio_ring_init(&ring, ring_storage, capacity, target);
 		audio_processor_reset(&processor);
 	}
 }
@@ -158,14 +131,12 @@ bool dc_audio_ready(void)
 void dc_audio_frame(void)
 {
 	int16_t frame_buf[AUDIO_SAMPLES_TOTAL];
-	const unsigned int samples = AUDIO_SAMPLES;
 
 	if (!audio_active || stream == SND_STREAM_INVALID)
 		return;
 
-	dc_audio_ring_make_room(samples);
 	minigb_apu_audio_callback(&apu, frame_buf);
-	dc_audio_ring_push(frame_buf, samples);
+	audio_ring_push(&ring, frame_buf, AUDIO_SAMPLES);
 	snd_stream_poll(stream);
 }
 
